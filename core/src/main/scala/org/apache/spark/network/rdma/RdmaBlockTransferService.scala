@@ -15,63 +15,57 @@
  * limitations under the License.
  */
 
-package org.apache.spark.network.netty
+package org.apache.spark.network.rdma
 
-import scala.collection.JavaConversions._
-import scala.concurrent.{Future, Promise}
-
-import org.apache.spark.{SecurityManager, SparkConf}
-import org.apache.spark.network._
-import org.apache.spark.network.buffer.ManagedBuffer
-import org.apache.spark.network.client._
-import org.apache.spark.network.sasl.{SaslRpcHandler, SaslClientBootstrap}
-import org.apache.spark.network.server._
-import org.apache.spark.network.shuffle._
-import org.apache.spark.network.shuffle.protocol.UploadBlock
+import java.nio.ByteBuffer
 import org.apache.spark.serializer.JavaSerializer
-import org.apache.spark.storage.{BlockId, StorageLevel}
+import org.apache.spark.network._
+import org.apache.spark.network.server._
+import org.apache.spark.network.netty._
+import org.apache.spark.storage.{ BlockId, StorageLevel }
 import org.apache.spark.util.Utils
+import org.apache.spark.{ Logging, SecurityManager, SparkConf, SparkException }
+import scala.concurrent.{ Future, Promise }
+import org.apache.spark.network.shuffle._
+import org.apache.spark.network.client.{ RpcResponseCallback, TransportClientFactory }
+import org.apache.spark.network.buffer.ManagedBuffer
+import org.apache.spark.network.shuffle.protocol._
+import com.sun.security.sasl.ClientFactoryImpl
+import org.apache.spark.network.client.ChunkReceivedCallback;
 
 /**
- * A BlockTransferService that uses Netty to fetch a set of blocks at at time.
+ * A [[BlockTransferService]] implementation based on JXIO library a custom
+ * implementation using RDMA.
  */
-class NettyBlockTransferService(conf: SparkConf, securityManager: SecurityManager, numCores: Int)
-  extends BlockTransferService {
+final class RdmaBlockTransferService(conf: SparkConf, securityManager: SecurityManager,
+    numCores: Int)
+  extends BlockTransferService with Logging {
 
-  // TODO: Don't use Java serialization, use a more cross-version compatible serialization format.
+  private var rdmaServer: TransportServer = _
+  private var blockDataManager: BlockDataManager = _
   private val serializer = new JavaSerializer(conf)
-  private val authEnabled = securityManager.isAuthenticationEnabled()
   private val transportConf = SparkTransportConf.fromSparkConf(conf, numCores)
 
-  private[this] var transportContext: NettyTransportContext = _
-  private[this] var server: TransportServer = _
-  private[this] var clientFactory: NettyTransportClientFactory = _
+  private[this] var transportContext: TransportContext = _
   private[this] var appId: String = _
+  private[this] var clientFactory: TransportClientFactory = _
 
   override def init(blockDataManager: BlockDataManager): Unit = {
-    val (rpcHandler: RpcHandler, bootstrap: Option[TransportClientBootstrap]) = {
-      val nettyRpcHandler = new BlockRpcServer(serializer, blockDataManager)
-      if (!authEnabled) {
-        (nettyRpcHandler, None)
-      } else {
-        (new SaslRpcHandler(nettyRpcHandler, securityManager),
-          Some(new SaslClientBootstrap(transportConf, conf.getAppId, securityManager)))
-      }
-    }
+    this.blockDataManager = blockDataManager
+    val rpcHandler = new BlockRpcServer(serializer, blockDataManager)
     transportContext = TransportContext.ContextFactory.createTransportContext(
-        transportConf, rpcHandler).asInstanceOf[NettyTransportContext]
-    clientFactory = transportContext.createClientFactory(bootstrap.toList)
-    server = transportContext.createServer(conf.getInt("spark.blockManager.port", 0))
+        transportConf, rpcHandler)
+    rdmaServer = transportContext.createServer()
     appId = conf.getAppId
-    logInfo("Server created on " + server.getPort)
+    clientFactory = transportContext.createClientFactory()
   }
 
   override def fetchBlocks(
-      host: String,
-      port: Int,
-      execId: String,
-      blockIds: Array[String],
-      listener: BlockFetchingListener): Unit = {
+    host: String,
+    port: Int,
+    execId: String,
+    blockIds: Array[String],
+    listener: BlockFetchingListener): Unit = {
     logTrace(s"Fetch blocks from $host:$port (executor id $execId)")
     try {
       val blockFetchStarter = new RetryingBlockFetcher.BlockFetchStarter {
@@ -96,17 +90,13 @@ class NettyBlockTransferService(conf: SparkConf, securityManager: SecurityManage
     }
   }
 
-  override def hostName: String = Utils.localHostName()
-
-  override def port: Int = server.getPort
-
   override def uploadBlock(
-      hostname: String,
-      port: Int,
-      execId: String,
-      blockId: BlockId,
-      blockData: ManagedBuffer,
-      level: StorageLevel): Future[Unit] = {
+    hostname: String,
+    port: Int,
+    execId: String,
+    blockId: BlockId,
+    blockData: ManagedBuffer,
+    level: StorageLevel): Future[Unit] = {
     val result = Promise[Unit]()
     val client = clientFactory.createClient(hostname, port)
 
@@ -140,7 +130,15 @@ class NettyBlockTransferService(conf: SparkConf, securityManager: SecurityManage
   }
 
   override def close(): Unit = {
-    server.close()
+    rdmaServer.close()
     clientFactory.close()
+  }
+
+  override def port: Int = {
+    rdmaServer.getPort()
+  }
+
+  override def hostName: String = {
+    Utils.localHostName()
   }
 }

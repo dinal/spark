@@ -44,8 +44,9 @@ import org.apache.spark.network.client.ChunkReceivedCallback;
 import org.apache.spark.network.client.RpcResponseCallback;
 import org.apache.spark.network.client.TransportClient;
 import org.apache.spark.network.client.TransportClientFactory;
-import org.apache.spark.network.server.RpcHandler;
+import org.apache.spark.network.TransportContext;
 import org.apache.spark.network.server.TransportServer;
+import org.apache.spark.network.server.RpcHandler;
 import org.apache.spark.network.server.StreamManager;
 import org.apache.spark.network.util.SystemPropertyConfigProvider;
 import org.apache.spark.network.util.TransportConf;
@@ -110,16 +111,21 @@ public class ChunkFetchIntegrationSuite {
         return streamManager;
       }
     };
-    TransportContext context = new TransportContext(conf, handler);
+    TransportContext context = TransportContext.ContextFactory
+        .createTransportContext(conf, handler);
     server = context.createServer();
     clientFactory = context.createClientFactory();
   }
 
   @AfterClass
   public static void tearDown() {
-    server.close();
-    clientFactory.close();
-    testFile.delete();
+    try {
+      server.close();
+      clientFactory.close();
+      testFile.delete();
+    } catch (Exception e) {
+
+    }
   }
 
   class FetchResult {

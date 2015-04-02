@@ -21,12 +21,8 @@ import java.util.Set;
 
 import com.google.common.base.Throwables;
 import com.google.common.collect.Sets;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.client.RpcResponseCallback;
 import org.apache.spark.network.client.TransportClient;
@@ -38,7 +34,6 @@ import org.apache.spark.network.protocol.ChunkFetchFailure;
 import org.apache.spark.network.protocol.ChunkFetchSuccess;
 import org.apache.spark.network.protocol.RpcFailure;
 import org.apache.spark.network.protocol.RpcResponse;
-import org.apache.spark.network.util.NettyUtils;
 
 /**
  * A handler that processes requests from clients and writes chunk data back. Each handler is
@@ -47,11 +42,10 @@ import org.apache.spark.network.util.NettyUtils;
  *
  * The messages should have been processed by the pipeline setup by {@link TransportServer}.
  */
-public class TransportRequestHandler extends MessageHandler<RequestMessage> {
+public abstract class TransportRequestHandler extends MessageHandler<RequestMessage> {
   private final Logger logger = LoggerFactory.getLogger(TransportRequestHandler.class);
 
-  /** The Netty channel that this handler is associated with. */
-  private final Channel channel;
+  private final String address;
 
   /** Client on the same channel allowing us to talk back to the requester. */
   private final TransportClient reverseClient;
@@ -65,16 +59,15 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
   /** List of all stream ids that have been read on this handler, used for cleanup. */
   private final Set<Long> streamIds;
 
-  public TransportRequestHandler(
-      Channel channel,
-      TransportClient reverseClient,
+  public TransportRequestHandler(String address, TransportClient reverseClient,
       RpcHandler rpcHandler) {
-    this.channel = channel;
+    this.address = address;
     this.reverseClient = reverseClient;
     this.rpcHandler = rpcHandler;
     this.streamManager = rpcHandler.getStreamManager();
     this.streamIds = Sets.newHashSet();
   }
+  public abstract void respond(final Encodable result);
 
   @Override
   public void exceptionCaught(Throwable cause) {
@@ -101,17 +94,16 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
   }
 
   private void processFetchRequest(final ChunkFetchRequest req) {
-    final String client = NettyUtils.getRemoteAddress(channel);
     streamIds.add(req.streamChunkId.streamId);
 
-    logger.trace("Received req from {} to fetch block {}", client, req.streamChunkId);
+    logger.trace("Received req from {} to fetch block {}", address, req.streamChunkId);
 
     ManagedBuffer buf;
     try {
       buf = streamManager.getChunk(req.streamChunkId.streamId, req.streamChunkId.chunkIndex);
     } catch (Exception e) {
       logger.error(String.format(
-        "Error opening block %s for request from %s", req.streamChunkId, client), e);
+        "Error opening block %s for request from %s", req.streamChunkId, address), e);
       respond(new ChunkFetchFailure(req.streamChunkId, Throwables.getStackTraceAsString(e)));
       return;
     }
@@ -136,27 +128,5 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
       logger.error("Error while invoking RpcHandler#receive() on RPC id " + req.requestId, e);
       respond(new RpcFailure(req.requestId, Throwables.getStackTraceAsString(e)));
     }
-  }
-
-  /**
-   * Responds to a single message with some Encodable object. If a failure occurs while sending,
-   * it will be logged and the channel closed.
-   */
-  private void respond(final Encodable result) {
-    final String remoteAddress = channel.remoteAddress().toString();
-    channel.writeAndFlush(result).addListener(
-      new ChannelFutureListener() {
-        @Override
-        public void operationComplete(ChannelFuture future) throws Exception {
-          if (future.isSuccess()) {
-            logger.trace(String.format("Sent result %s to client %s", result, remoteAddress));
-          } else {
-            logger.error(String.format("Error sending result %s to %s; closing connection",
-              result, remoteAddress), future.cause());
-            channel.close();
-          }
-        }
-      }
-    );
   }
 }

@@ -18,6 +18,7 @@
 package org.apache.spark.network.sasl;
 
 import io.netty.buffer.ByteBuf;
+import java.nio.ByteBuffer;
 
 import org.apache.spark.network.protocol.Encodable;
 import org.apache.spark.network.protocol.Encoders;
@@ -52,8 +53,26 @@ class SaslMessage implements Encodable {
     Encoders.ByteArrays.encode(buf, payload);
   }
 
+  @Override
+  public void encode(ByteBuffer buf) {
+    buf.put(TAG_BYTE);
+    Encoders.Strings.encode(buf, appId);
+    Encoders.ByteArrays.encode(buf, payload);
+  }
+
   public static SaslMessage decode(ByteBuf buf) {
     if (buf.readByte() != TAG_BYTE) {
+      throw new IllegalStateException("Expected SaslMessage, received something else"
+        + " (maybe your client does not have SASL enabled?)");
+    }
+
+    String appId = Encoders.Strings.decode(buf);
+    byte[] payload = Encoders.ByteArrays.decode(buf);
+    return new SaslMessage(appId, payload);
+  }
+
+  public static SaslMessage decode(ByteBuffer buf) {
+    if (buf.get() != TAG_BYTE) {
       throw new IllegalStateException("Expected SaslMessage, received something else"
         + " (maybe your client does not have SASL enabled?)");
     }

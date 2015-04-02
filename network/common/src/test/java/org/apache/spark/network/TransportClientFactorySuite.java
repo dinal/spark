@@ -51,7 +51,7 @@ public class TransportClientFactorySuite {
   public void setUp() {
     conf = new TransportConf(new SystemPropertyConfigProvider());
     RpcHandler rpcHandler = new NoOpRpcHandler();
-    context = new TransportContext(conf, rpcHandler);
+    context = TransportContext.ContextFactory.createTransportContext(conf, rpcHandler);
     server1 = context.createServer();
     server2 = context.createServer();
   }
@@ -82,7 +82,8 @@ public class TransportClientFactorySuite {
     });
 
     RpcHandler rpcHandler = new NoOpRpcHandler();
-    TransportContext context = new TransportContext(conf, rpcHandler);
+    TransportContext context = TransportContext.ContextFactory.createTransportContext(
+        conf, rpcHandler);
     final TransportClientFactory factory = context.createClientFactory();
     final Set<TransportClient> clients = Collections.synchronizedSet(
       new HashSet<TransportClient>());

@@ -16,6 +16,7 @@
  */
 
 package org.apache.spark.network.protocol;
+import java.nio.ByteBuffer;
 
 import io.netty.buffer.ByteBuf;
 
@@ -41,9 +42,24 @@ public interface Message extends Encodable {
     @Override public int encodedLength() { return 1; }
 
     @Override public void encode(ByteBuf buf) { buf.writeByte(id); }
+    
+    public void encode(ByteBuffer buf) { buf.put(id); }
 
     public static Type decode(ByteBuf buf) {
       byte id = buf.readByte();
+      switch (id) {
+        case 0: return ChunkFetchRequest;
+        case 1: return ChunkFetchSuccess;
+        case 2: return ChunkFetchFailure;
+        case 3: return RpcRequest;
+        case 4: return RpcResponse;
+        case 5: return RpcFailure;
+        default: throw new IllegalArgumentException("Unknown message type: " + id);
+      }
+    }
+    
+    public static Type decode(ByteBuffer buf) {
+      byte id = buf.get();
       switch (id) {
         case 0: return ChunkFetchRequest;
         case 1: return ChunkFetchSuccess;

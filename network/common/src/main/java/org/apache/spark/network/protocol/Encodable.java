@@ -16,6 +16,7 @@
  */
 
 package org.apache.spark.network.protocol;
+import java.nio.ByteBuffer;
 
 import io.netty.buffer.ByteBuf;
 
@@ -38,4 +39,6 @@ public interface Encodable {
    * This method must write exactly encodedLength() bytes.
    */
   void encode(ByteBuf buf);
+  
+  void encode(ByteBuffer buf);
 }

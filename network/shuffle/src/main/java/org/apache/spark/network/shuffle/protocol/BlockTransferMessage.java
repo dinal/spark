@@ -16,6 +16,7 @@
  */
 
 package org.apache.spark.network.shuffle.protocol;
+import java.nio.ByteBuffer;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -55,6 +56,17 @@ public abstract class BlockTransferMessage implements Encodable {
     public static BlockTransferMessage fromByteArray(byte[] msg) {
       ByteBuf buf = Unpooled.wrappedBuffer(msg);
       byte type = buf.readByte();
+      switch (type) {
+        case 0: return OpenBlocks.decode(buf);
+        case 1: return UploadBlock.decode(buf);
+        case 2: return RegisterExecutor.decode(buf);
+        case 3: return StreamHandle.decode(buf);
+        default: throw new IllegalArgumentException("Unknown message type: " + type);
+      }
+    }
+    
+    public static BlockTransferMessage decode(ByteBuffer buf) {
+      byte type = buf.get();
       switch (type) {
         case 0: return OpenBlocks.decode(buf);
         case 1: return UploadBlock.decode(buf);

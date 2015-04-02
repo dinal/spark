@@ -17,6 +17,8 @@
 
 package org.apache.spark.network.client;
 
+import org.apache.spark.network.client.TransportClient;
+
 /**
  * A bootstrap which is executed on a TransportClient before it is returned to the user.
  * This enables an initial exchange of information (e.g., SASL authentication tokens) on a once-per-

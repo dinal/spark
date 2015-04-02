@@ -21,9 +21,8 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import org.apache.spark.network.client.TransportClient;
 import org.apache.spark.network.client.TransportResponseHandler;
+import org.apache.spark.network.netty.NettyTransportClient;
 import org.apache.spark.network.protocol.Message;
 import org.apache.spark.network.protocol.RequestMessage;
 import org.apache.spark.network.protocol.ResponseMessage;
@@ -44,12 +43,12 @@ import org.apache.spark.network.util.NettyUtils;
 public class TransportChannelHandler extends SimpleChannelInboundHandler<Message> {
   private final Logger logger = LoggerFactory.getLogger(TransportChannelHandler.class);
 
-  private final TransportClient client;
+  private final NettyTransportClient client;
   private final TransportResponseHandler responseHandler;
   private final TransportRequestHandler requestHandler;
 
   public TransportChannelHandler(
-      TransportClient client,
+      NettyTransportClient client,
       TransportResponseHandler responseHandler,
       TransportRequestHandler requestHandler) {
     this.client = client;
@@ -57,7 +56,7 @@ public class TransportChannelHandler extends SimpleChannelInboundHandler<Message
     this.requestHandler = requestHandler;
   }
 
-  public TransportClient getClient() {
+  public NettyTransportClient getClient() {
     return client;
   }
 

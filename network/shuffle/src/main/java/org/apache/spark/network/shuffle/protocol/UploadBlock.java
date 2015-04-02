@@ -17,6 +17,7 @@
 
 package org.apache.spark.network.shuffle.protocol;
 
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 import com.google.common.base.Objects;
@@ -102,8 +103,26 @@ public class UploadBlock extends BlockTransferMessage {
     Encoders.ByteArrays.encode(buf, metadata);
     Encoders.ByteArrays.encode(buf, blockData);
   }
+  
+  @Override
+  public void encode(ByteBuffer buf) {
+    Encoders.Strings.encode(buf, appId);
+    Encoders.Strings.encode(buf, execId);
+    Encoders.Strings.encode(buf, blockId);
+    Encoders.ByteArrays.encode(buf, metadata);
+    Encoders.ByteArrays.encode(buf, blockData);
+  }
 
   public static UploadBlock decode(ByteBuf buf) {
+    String appId = Encoders.Strings.decode(buf);
+    String execId = Encoders.Strings.decode(buf);
+    String blockId = Encoders.Strings.decode(buf);
+    byte[] metadata = Encoders.ByteArrays.decode(buf);
+    byte[] blockData = Encoders.ByteArrays.decode(buf);
+    return new UploadBlock(appId, execId, blockId, metadata, blockData);
+  }
+  
+  public static UploadBlock decode(ByteBuffer buf) {
     String appId = Encoders.Strings.decode(buf);
     String execId = Encoders.Strings.decode(buf);
     String blockId = Encoders.Strings.decode(buf);

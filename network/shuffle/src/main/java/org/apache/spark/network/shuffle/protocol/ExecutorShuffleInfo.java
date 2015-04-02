@@ -17,6 +17,7 @@
 
 package org.apache.spark.network.shuffle.protocol;
 
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 import com.google.common.base.Objects;
@@ -79,9 +80,23 @@ public class ExecutorShuffleInfo implements Encodable {
     Encoders.Strings.encode(buf, shuffleManager);
   }
 
+  @Override
+  public void encode(ByteBuffer buf) {
+    Encoders.StringArrays.encode(buf, localDirs);
+    buf.putInt(subDirsPerLocalDir);
+    Encoders.Strings.encode(buf, shuffleManager);
+  }
+  
   public static ExecutorShuffleInfo decode(ByteBuf buf) {
     String[] localDirs = Encoders.StringArrays.decode(buf);
     int subDirsPerLocalDir = buf.readInt();
+    String shuffleManager = Encoders.Strings.decode(buf);
+    return new ExecutorShuffleInfo(localDirs, subDirsPerLocalDir, shuffleManager);
+  }
+  
+  public static ExecutorShuffleInfo decode(ByteBuffer buf) {
+    String[] localDirs = Encoders.StringArrays.decode(buf);
+    int subDirsPerLocalDir = buf.getInt();
     String shuffleManager = Encoders.Strings.decode(buf);
     return new ExecutorShuffleInfo(localDirs, subDirsPerLocalDir, shuffleManager);
   }

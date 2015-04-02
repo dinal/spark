@@ -17,6 +17,7 @@
 
 package org.apache.spark.network.protocol;
 
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 import com.google.common.base.Objects;
@@ -43,9 +44,21 @@ public final class RpcResponse implements ResponseMessage {
     buf.writeLong(requestId);
     Encoders.ByteArrays.encode(buf, response);
   }
+  
+  @Override
+  public void encode(ByteBuffer buf) {
+    buf.putLong(requestId);
+    Encoders.ByteArrays.encode(buf, response);
+  }
 
   public static RpcResponse decode(ByteBuf buf) {
     long requestId = buf.readLong();
+    byte[] response = Encoders.ByteArrays.decode(buf);
+    return new RpcResponse(requestId, response);
+  }
+  
+  public static RpcResponse decode(ByteBuffer buf) {
+    long requestId = buf.getLong();
     byte[] response = Encoders.ByteArrays.decode(buf);
     return new RpcResponse(requestId, response);
   }

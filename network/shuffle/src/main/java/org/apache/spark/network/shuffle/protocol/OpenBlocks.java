@@ -17,6 +17,7 @@
 
 package org.apache.spark.network.shuffle.protocol;
 
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 import com.google.common.base.Objects;
@@ -77,8 +78,22 @@ public class OpenBlocks extends BlockTransferMessage {
     Encoders.Strings.encode(buf, execId);
     Encoders.StringArrays.encode(buf, blockIds);
   }
+  
+  @Override
+  public void encode(ByteBuffer buf) {
+    Encoders.Strings.encode(buf, appId);
+    Encoders.Strings.encode(buf, execId);
+    Encoders.StringArrays.encode(buf, blockIds);
+  }
 
   public static OpenBlocks decode(ByteBuf buf) {
+    String appId = Encoders.Strings.decode(buf);
+    String execId = Encoders.Strings.decode(buf);
+    String[] blockIds = Encoders.StringArrays.decode(buf);
+    return new OpenBlocks(appId, execId, blockIds);
+  }
+  
+  public static OpenBlocks decode(ByteBuffer buf) {
     String appId = Encoders.Strings.decode(buf);
     String execId = Encoders.Strings.decode(buf);
     String[] blockIds = Encoders.StringArrays.decode(buf);

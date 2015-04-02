@@ -26,11 +26,11 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 import org.apache.spark.network.TestUtils;
-import org.apache.spark.network.TransportContext;
+import org.apache.spark.network.netty.NettyTransportContext;
+import org.apache.spark.network.netty.NettyTransportServer;
 import org.apache.spark.network.sasl.SaslRpcHandler;
 import org.apache.spark.network.sasl.SecretKeyHolder;
 import org.apache.spark.network.server.RpcHandler;
-import org.apache.spark.network.server.TransportServer;
 import org.apache.spark.network.shuffle.protocol.ExecutorShuffleInfo;
 import org.apache.spark.network.util.SystemPropertyConfigProvider;
 import org.apache.spark.network.util.TransportConf;
@@ -38,13 +38,13 @@ import org.apache.spark.network.util.TransportConf;
 public class ExternalShuffleSecuritySuite {
 
   TransportConf conf = new TransportConf(new SystemPropertyConfigProvider());
-  TransportServer server;
+  NettyTransportServer server;
 
   @Before
   public void beforeEach() {
     RpcHandler handler = new SaslRpcHandler(new ExternalShuffleBlockHandler(conf),
       new TestSecretKeyHolder("my-app-id", "secret"));
-    TransportContext context = new TransportContext(conf, handler);
+    NettyTransportContext context = new NettyTransportContext(conf, handler);
     this.server = context.createServer();
   }
 

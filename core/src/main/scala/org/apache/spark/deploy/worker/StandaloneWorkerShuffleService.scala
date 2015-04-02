@@ -43,7 +43,7 @@ class StandaloneWorkerShuffleService(sparkConf: SparkConf, securityManager: Secu
   private val blockHandler = new ExternalShuffleBlockHandler(transportConf)
   private val transportContext: TransportContext = {
     val handler = if (useSasl) new SaslRpcHandler(blockHandler, securityManager) else blockHandler
-    new TransportContext(transportConf, handler)
+    TransportContext.ContextFactory.createTransportContext(transportConf, handler)
   }
 
   private var server: TransportServer = _

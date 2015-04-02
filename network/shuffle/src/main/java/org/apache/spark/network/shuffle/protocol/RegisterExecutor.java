@@ -17,6 +17,8 @@
 
 package org.apache.spark.network.shuffle.protocol;
 
+import java.nio.ByteBuffer;
+
 import com.google.common.base.Objects;
 import io.netty.buffer.ByteBuf;
 
@@ -81,8 +83,22 @@ public class RegisterExecutor extends BlockTransferMessage {
     Encoders.Strings.encode(buf, execId);
     executorInfo.encode(buf);
   }
+  
+  @Override
+  public void encode(ByteBuffer buf) {
+    Encoders.Strings.encode(buf, appId);
+    Encoders.Strings.encode(buf, execId);
+    executorInfo.encode(buf);
+  }
 
   public static RegisterExecutor decode(ByteBuf buf) {
+    String appId = Encoders.Strings.decode(buf);
+    String execId = Encoders.Strings.decode(buf);
+    ExecutorShuffleInfo executorShuffleInfo = ExecutorShuffleInfo.decode(buf);
+    return new RegisterExecutor(appId, execId, executorShuffleInfo);
+  }
+  
+  public static RegisterExecutor decode(ByteBuffer buf) {
     String appId = Encoders.Strings.decode(buf);
     String execId = Encoders.Strings.decode(buf);
     ExecutorShuffleInfo executorShuffleInfo = ExecutorShuffleInfo.decode(buf);

@@ -17,11 +17,14 @@
 
 package org.apache.spark.network.protocol;
 
+import java.nio.ByteBuffer;
+
 import com.google.common.base.Objects;
 import io.netty.buffer.ByteBuf;
 
 import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.buffer.NettyManagedBuffer;
+import org.apache.spark.network.buffer.NioManagedBuffer;
 
 /**
  * Response to {@link ChunkFetchRequest} when a chunk exists and has been successfully fetched.
@@ -52,12 +55,23 @@ public final class ChunkFetchSuccess implements ResponseMessage {
   public void encode(ByteBuf buf) {
     streamChunkId.encode(buf);
   }
+  
+  @Override
+  public void encode(ByteBuffer buf) {
+    streamChunkId.encode(buf);
+  }
 
   /** Decoding uses the given ByteBuf as our data, and will retain() it. */
   public static ChunkFetchSuccess decode(ByteBuf buf) {
     StreamChunkId streamChunkId = StreamChunkId.decode(buf);
     buf.retain();
     NettyManagedBuffer managedBuf = new NettyManagedBuffer(buf.duplicate());
+    return new ChunkFetchSuccess(streamChunkId, managedBuf);
+  }
+  
+  public static ChunkFetchSuccess decode(ByteBuffer buf) {
+    StreamChunkId streamChunkId = StreamChunkId.decode(buf);
+    NioManagedBuffer managedBuf = new NioManagedBuffer(buf.duplicate());
     return new ChunkFetchSuccess(streamChunkId, managedBuf);
   }
 
