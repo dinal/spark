@@ -46,7 +46,7 @@ public class RdmaMessage {
     }
     List<Msg> encodedData = new LinkedList<Msg>();
     Message.Type msgType = msg.type();
-    logger.info(this+" encode going to msgType=" + msgType + " msg=" + msg + " msgSize=" + msgSize);
+    logger.debug(this+" encode going to msgType=" + msgType + " msg=" + msg + " msgSize=" + msgSize);
     while (encodedSize < msgSize) {
       Msg m = provider.getMsg();
       if (m == null) {
@@ -74,7 +74,7 @@ public class RdmaMessage {
 
   // encodes only part of the msg that can fit into the buffer
   private void encodePartial(Message.Type type, boolean includeMsgHeader, ByteBuffer buf) {
-    logger.info(this +" encodePartial type=" + type + " msg=" + msg + " msgSize=" + msgSize);
+    logger.debug(this +" encodePartial type=" + type + " msg=" + msg + " msgSize=" + msgSize);
     int sizeToWrite;
     switch (type) {
     case RpcRequest:
@@ -149,18 +149,9 @@ public class RdmaMessage {
     }
   }
 
-  /**
-   * decode msgs even with partial data
-   * 
-   * @param type
-   *          type of msg to decode
-   * @param in
-   *          buffer to read encoded data from
-   * @param out
-   *          buffer to put decoded data into
-   */
-  public static void decode(Message.Type type, ByteBuffer in, ByteBuffer out) {
-
+  @Override
+  public String toString() {
+	  return Thread.currentThread() + " " + msg;
   }
 
 }

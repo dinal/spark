@@ -37,14 +37,13 @@ import org.apache.spark.network.client.ChunkReceivedCallback;
  * A [[BlockTransferService]] implementation based on JXIO library a custom
  * implementation using RDMA.
  */
-final class RdmaBlockTransferService(conf: SparkConf, securityManager: SecurityManager,
-    numCores: Int)
+final class RdmaBlockTransferService(conf: SparkConf, securityManager: SecurityManager)
   extends BlockTransferService with Logging {
 
   private var rdmaServer: TransportServer = _
   private var blockDataManager: BlockDataManager = _
   private val serializer = new JavaSerializer(conf)
-  private val transportConf = SparkTransportConf.fromSparkConf(conf, numCores)
+  private val transportConf = SparkTransportConf.fromSparkConf(conf)
 
   private[this] var transportContext: TransportContext = _
   private[this] var appId: String = _

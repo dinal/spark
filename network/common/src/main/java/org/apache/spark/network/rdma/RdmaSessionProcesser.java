@@ -119,7 +119,7 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
 
   @Override
   public void respond(Encodable result) {
-    logger.info("adding to backlog "+(Message) result);
+    logger.info(this.session + " adding to backlog "+(Message) result);
     backlog.add(new RdmaMessage((Message) result, 0));
     encodeAndSend();
   }
@@ -127,9 +127,8 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
   private void encodeAndSend() {
     try {
       RdmaMessage rdmaMsg = backlog.get(0);
-      logger.info("encodeAndSend rdmaMsg="+rdmaMsg);
       List<Msg> msgsToSend = rdmaMsg.encode(this);
-      logger.info("encodeAndSend encoded="+msgsToSend);
+      logger.info(this.session + " encodeAndSend encoded="+msgsToSend);
       // always will include only one msg since we are replaying to each msg
       // immediately, and not accumulating them
       assert msgsToSend.size() == 1;
@@ -152,7 +151,6 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
   public Msg getMsg() {
     Msg temp = currentMsg;
     currentMsg = null;
-    logger.info("getMsg returning="+temp);
     return temp;
   }
 }

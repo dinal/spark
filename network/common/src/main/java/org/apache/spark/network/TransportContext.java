@@ -29,6 +29,7 @@ public interface TransportContext {
   class ContextFactory {
     public static TransportContext createTransportContext(TransportConf transportConf,
         RpcHandler rpcHandler) {
+    	System.out.println("TransportContext "+transportConf.networkType());
       if (transportConf.networkType().compareTo("rdma") == 0) {
         return new RdmaTransportContext(transportConf, rpcHandler);
       } else {

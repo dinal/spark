@@ -66,7 +66,6 @@ public class NettyTransportContext implements TransportContext{
     this.rpcHandler = rpcHandler;
     this.encoder = new MessageEncoder();
     this.decoder = new MessageDecoder();
-    logger.error("LOG PRINT!!!!!!!!!!!!!!!!!!");
   }
 
   /**

@@ -33,7 +33,7 @@ import org.slf4j.LoggerFactory;
 public class RdmaClientContext implements Runnable, MessageProvider {
 
   private final Logger logger = LoggerFactory.getLogger(RdmaClientContext.class);
-  private final int CLIENT_BUF_COUNT = 5;
+  private final int CLIENT_BUF_COUNT = 10;
   private final int REQUEST_BATCH = 1;
   private final URI uri;
   private final EventQueueHandler eqh;
@@ -83,13 +83,12 @@ public class RdmaClientContext implements Runnable, MessageProvider {
         try {
           List<Msg> msgsToSend = entry.encode(this);
           for (Msg m : msgsToSend) {
-            logger.info("Sending msg "+m+" for task "+entry);
             cs.sendRequest(m);
           }
+          logger.info(this + " Sending request {} to {} + ", entry, uri.getHost());
           if (entry.encodedFully) {
             tasks.remove(entry);
           }
-          logger.trace("Sending request {} to {}", entry.id, uri.getHost());
         } catch (Exception e) {
           tasks.remove(entry);
           String errorMsg = String.format("Failed to send RPC %s to %s: %s", entry.id,
@@ -116,7 +115,6 @@ public class RdmaClientContext implements Runnable, MessageProvider {
     // were to write
     try {
       if (!chunkCallbacks.isEmpty()) {
-        logger.info("chunkCallbacks is not empty, Sending msg ");
         Msg m;
         while ((m = msgPool.getMsg()) != null) {
           cs.sendRequest(m);
@@ -198,8 +196,8 @@ public class RdmaClientContext implements Runnable, MessageProvider {
         msgPool.releaseMsg(msg);
         RpcResponseCallback rpcListener = rpcCallbacks.get(rpcResp.requestId);
         if (rpcListener == null) {
-          logger.warn(
-              "Ignoring response for RPC {} from {} ({} bytes) since it is not outstanding",
+          logger.warn(RdmaClientContext.this + 
+              " Ignoring response for RPC {} from {} ({} bytes) since it is not outstanding",
               rpcResp.requestId, uri, rpcResp.response.length);
         } else {
           rpcCallbacks.remove(rpcResp.requestId);
@@ -211,7 +209,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
         msgPool.releaseMsg(msg);
         RpcResponseCallback rpcFailListener = rpcCallbacks.get(rpcFail.requestId);
         if (rpcFailListener == null) {
-          logger.warn("Ignoring response for RPC {} from {} ({}) since it is not outstanding",
+          logger.warn(RdmaClientContext.this + " Ignoring response for RPC {} from {} ({}) since it is not outstanding",
               rpcFail.requestId, uri, rpcFail.errorString);
         } else {
           rpcCallbacks.remove(rpcFail.requestId);
@@ -223,7 +221,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
         msgPool.releaseMsg(msg);
         ChunkReceivedCallback chunkFailListener = retriveChunkCallback(chunkFail.streamChunkId.hashCode());
         if (chunkFailListener == null) {
-          logger.warn("Ignoring response for block {} from {} ({}) since it is not outstanding",
+          logger.warn(RdmaClientContext.this + " Ignoring response for block {} from {} ({}) since it is not outstanding",
               chunkFail.streamChunkId, uri, chunkFail.errorString);
         } else {
           chunkCallbacks.remove(chunkFail.streamChunkId.hashCode());
@@ -233,22 +231,25 @@ public class RdmaClientContext implements Runnable, MessageProvider {
         }
         break;
       case ChunkFetchSuccess:
-       logger.info("ChunkFetchSuccess decoding: "+buf);
-        ChunkFetchSuccess chunkResp = ChunkFetchSuccess.decode(buf);
-        msgPool.releaseMsg(msg);
+       logger.info(RdmaClientContext.this + " ChunkFetchSuccess decoding: " + buf +
+    		   " proccessedResp=" + proccessedResp);
+       ByteBuffer newBuf = ByteBuffer.allocateDirect(buf.remaining());
+       newBuf.put(buf);
+       newBuf.position(0);
+        ChunkFetchSuccess chunkResp = ChunkFetchSuccess.decode(newBuf);
+        logger.info("releaseMsg: " + msgPool.releaseMsg(msg));
         proccessedResp = null;
         ChunkReceivedCallback chunkListener = retriveChunkCallback(chunkResp.streamChunkId.hashCode());
         if (chunkListener == null) {
-          logger.warn("Ignoring response for block {} from {} since it is not outstanding",
+          logger.warn(RdmaClientContext.this + " Ignoring response for block {} from {} since it is not outstanding",
               chunkResp.streamChunkId, uri);
         } else {
-          logger.info("removing chunkcallback");
           chunkCallbacks.remove((long)chunkResp.streamChunkId.hashCode());
           chunkListener.onSuccess(chunkResp.streamChunkId.chunkIndex, chunkResp.buffer);
         }
         break;
       default:
-        logger.error(this.toString() + " unknown response " + type);
+        logger.error(RdmaClientContext.this + " unknown response " + type);
       }
 
       proccessedResp = null;
@@ -284,7 +285,6 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   }
 
   public void write(RdmaMessage req, ChunkReceivedCallback respCallbacks) {
-    logger.info("writing id "+req.id);
     chunkCallbacks.put(req.id, respCallbacks);
     reqHandled++;
     tasks.add(req);

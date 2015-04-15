@@ -34,6 +34,7 @@ import org.apache.spark.metrics.MetricsSystem
 import org.apache.spark.network.BlockTransferService
 import org.apache.spark.network.netty.NettyBlockTransferService
 import org.apache.spark.network.nio.NioBlockTransferService
+import org.apache.spark.network.rdma.RdmaBlockTransferService
 import org.apache.spark.rpc.{RpcEndpointRef, RpcEndpoint, RpcEnv}
 import org.apache.spark.rpc.akka.AkkaRpcEnv
 import org.apache.spark.scheduler.{OutputCommitCoordinator, LiveListenerBus}
@@ -325,13 +326,14 @@ object SparkEnv extends Logging {
     val shuffleManager = instantiateClass[ShuffleManager](shuffleMgrClass)
 
     val shuffleMemoryManager = new ShuffleMemoryManager(conf)
-
     val blockTransferService =
       conf.get("spark.shuffle.blockTransferService", "netty").toLowerCase match {
         case "netty" =>
           new NettyBlockTransferService(conf, securityManager, numUsableCores)
         case "nio" =>
           new NioBlockTransferService(conf, securityManager)
+        case "rdma" =>
+          new RdmaBlockTransferService(conf, securityManager)
       }
 
     val blockManagerMaster = new BlockManagerMaster(registerOrLookup(

@@ -7,6 +7,7 @@ import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +47,7 @@ public class RdmaTransportServer implements Runnable, TransportServer, ServerRes
   private ExecutorService executers[] = new ExecutorService[20];
   private int executorNextIndex = 0;
   private RdmaTransportContext context;
-  private ConcurrentHashMap<ServerSession, List<Msg>> responses = new ConcurrentHashMap<ServerSession, List<Msg>>();
+  private HashMap<ServerSession, List<Msg>> responses = new HashMap<ServerSession, List<Msg>>();
   private static final int BATCH_RESPONSE = 1;
   private boolean stop;
 
@@ -79,10 +80,10 @@ public class RdmaTransportServer implements Runnable, TransportServer, ServerRes
     }
 
     public void onSessionNew(SessionKey sesKey, String srcIP, Worker workerHint) {
-      logger.info("onSessionNew " + sesKey.getUri());
       RdmaSessionProcesser processer = new RdmaSessionProcesser(RdmaTransportServer.this,
           executers[executorNextIndex], sesKey.getUri(), context.getRpcHandler());
       ServerSession session = new ServerSession(sesKey, processer.callbacks);
+      logger.info("onSessionNew uri=" + sesKey.getUri() + " session=" + session);
       processer.setSession(session);
       mListener.accept(session);
       executorNextIndex += 1;
@@ -100,8 +101,8 @@ public class RdmaTransportServer implements Runnable, TransportServer, ServerRes
         logger.error(this.toString() + " exception occurred in eventLoop:"
             + mEqh.getCaughtException());
       }
-      for (Entry<ServerSession, List<Msg>> entry : responses.entrySet()) {
-        synchronized (entry.getKey()) {
+      synchronized (responses) {
+        for (Entry<ServerSession, List<Msg>> entry : responses.entrySet()) {
           for (Msg m : entry.getValue()) {
             try {
               entry.getKey().sendResponse(m);
@@ -110,10 +111,8 @@ public class RdmaTransportServer implements Runnable, TransportServer, ServerRes
               logger.error("Error Sending response to " + entry.getKey());
             }
           }
-          logger.info(this+" removing from list responses="+responses+" "+responses.size());
-          responses.remove(entry.getKey());
-          logger.info(this+" removing from list responses="+responses.size());
         }
+        responses.clear();
       }
     }
     mEqh.stop();
@@ -158,7 +157,7 @@ public class RdmaTransportServer implements Runnable, TransportServer, ServerRes
   @Override
   public void respond(ServerSession session, Msg msg) {
     logger.info(this+" adding to respond list session="+session+" msg="+msg);
-    synchronized (session) {
+    synchronized (responses) {
       List<Msg> list = responses.get(session);
       if (list == null) {
         list = new LinkedList<Msg>();
