@@ -21,58 +21,65 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 
+import org.accelio.jxio.Msg;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Objects;
 
-import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
+import io.netty.buffer.Unpooled;
 
 /**
- * A {@link ManagedBuffer} backed by a Netty {@link ByteBuf}.
+ * A {@link ManagedBuffer} backed by {@link ByteBuffer}.
  */
-public final class NettyManagedBuffer extends ManagedBuffer {
+public final class RdmaManagedBuffer extends ManagedBuffer {
   private final Logger logger = LoggerFactory.getLogger(RdmaManagedBuffer.class);
-  private final ByteBuf buf;
+  private final ByteBuffer buf;
+  private final Msg msg;
+  private int referenceCount = 1;
 
-  public NettyManagedBuffer(ByteBuf buf) {
-    this.buf = buf;
-    logger.info("NettyManagedBuffer " + buf.refCnt());
+  public RdmaManagedBuffer(Msg msg) {
+    logger.info("RdmaManagedBuffer "+msg);
+    this.buf = msg.getIn();
+    this.msg = msg;
   }
 
   @Override
   public long size() {
-    return buf.readableBytes();
+    return buf.remaining();
   }
 
   @Override
   public ByteBuffer nioByteBuffer() throws IOException {
-    return buf.nioBuffer();
+    return buf.duplicate();
   }
 
   @Override
   public InputStream createInputStream() throws IOException {
-    return new ByteBufInputStream(buf);
+    return new ByteBufInputStream(Unpooled.wrappedBuffer(buf));
   }
 
   @Override
   public ManagedBuffer retain() {
-    logger.info("NettyManagedBuffer retain " + buf.refCnt());
-    buf.retain();
+    logger.info("RdmaManagedBuffer retain " + referenceCount + " " + msg);
+    referenceCount++;
     return this;
   }
 
   @Override
   public ManagedBuffer release() {
-    logger.info("NettyManagedBuffer release " + buf.refCnt());
-    buf.release();
+    logger.info("RdmaManagedBuffer release " + referenceCount + " " + msg);
+  	referenceCount--;
+  	if (referenceCount == 0) {
+  	  msg.returnToParentPool();
+  	}
     return this;
   }
 
   @Override
   public Object convertToNetty() throws IOException {
-    return buf.duplicate();
+    return Unpooled.wrappedBuffer(buf);
   }
 
   @Override

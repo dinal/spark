@@ -37,7 +37,7 @@ import org.slf4j.LoggerFactory;
 
 public class RdmaTransportServer implements Runnable, TransportServer, ServerResponder {
   private final Logger logger = LoggerFactory.getLogger(RdmaTransportServer.class);
-  public static final int SERVER_BUFFER_SIZE = Constants.MSGPOOL_BUF_SIZE;
+  public static final int SERVER_BUFFER_SIZE = Constants.MSGPOOL_BUF_SIZE / 2;
   private static final int SERVER_INITIAL_BUFFER = 500;
   private static final int SERVER_INC_BUFFER = 50;
   private Thread mListenerThread;

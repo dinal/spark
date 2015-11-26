@@ -98,13 +98,13 @@
     <module>sql/core</module>
     <module>sql/hive</module>
     <module>assembly</module>
-    <!--module>external/twitter</module>
+    <module>external/twitter</module>
     <module>external/flume</module>
     <module>external/flume-sink</module>
     <module>external/mqtt</module>
     <module>external/zeromq</module>
     <module>examples</module>
-    <module>repl</module-->
+    <module>repl</module>
     <module>launcher</module>
   </modules>
 
@@ -1440,7 +1440,7 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-source-plugin</artifactId>
       </plugin>
-      <plugin>
+      <!--plugin>
         <groupId>org.scalastyle</groupId>
         <artifactId>scalastyle-maven-plugin</artifactId>
         <version>0.4.0</version>
@@ -1464,7 +1464,7 @@
             </goals>
           </execution>
         </executions>
-      </plugin>
+      </plugin-->
       <!-- Enable surefire and scalatest in all children, in one place: -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -1710,10 +1710,10 @@
         <jline.version>${scala.version}</jline.version>
         <jline.groupid>org.scala-lang</jline.groupid>
       </properties>
-      <!--modules>
+      <modules>
         <module>external/kafka</module>
         <module>external/kafka-assembly</module>
-      </modules-->
+      </modules>
     </profile>
 
     <profile>

@@ -111,7 +111,7 @@ public class YarnShuffleService extends AuxiliaryService {
 
     int port = conf.getInt(
       SPARK_SHUFFLE_SERVICE_PORT_KEY, DEFAULT_SPARK_SHUFFLE_SERVICE_PORT);
-    TransportContext transportContext = new TransportContext(transportConf, rpcHandler);
+    TransportContext transportContext = TransportContext.ContextFactory.createTransportContext(transportConf, rpcHandler);
     shuffleServer = transportContext.createServer(port);
     String authEnabledString = authEnabled ? "enabled" : "not enabled";
     logger.info("Started YARN shuffle service for Spark on port {}. " +
