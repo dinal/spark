@@ -17,10 +17,12 @@
 
 package org.apache.spark.network.server;
 
-import java.util.Set;
-
 import com.google.common.base.Throwables;
-import com.google.common.collect.Sets;
+
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelFutureListener;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.spark.network.buffer.ManagedBuffer;
@@ -45,29 +47,29 @@ import org.apache.spark.network.protocol.RpcResponse;
 public abstract class TransportRequestHandler extends MessageHandler<RequestMessage> {
   private final Logger logger = LoggerFactory.getLogger(TransportRequestHandler.class);
 
-  private final String address;
+  protected final String address;
 
   /** Client on the same channel allowing us to talk back to the requester. */
-  private final TransportClient reverseClient;
+  protected final TransportClient reverseClient;
 
   /** Handles all RPC messages. */
-  private final RpcHandler rpcHandler;
+  protected final RpcHandler rpcHandler;
 
   /** Returns each chunk part of a stream. */
-  private final StreamManager streamManager;
+  protected final StreamManager streamManager;
 
-  /** List of all stream ids that have been read on this handler, used for cleanup. */
-  private final Set<Long> streamIds;
-
-  public TransportRequestHandler(String address, TransportClient reverseClient,
+  public TransportRequestHandler(
+      String address,
+      TransportClient reverseClient,
       RpcHandler rpcHandler) {
     this.address = address;
     this.reverseClient = reverseClient;
     this.rpcHandler = rpcHandler;
     this.streamManager = rpcHandler.getStreamManager();
-    this.streamIds = Sets.newHashSet();
   }
   public abstract void respond(final Encodable result);
+
+  protected abstract void processFetchRequest(final ChunkFetchRequest req);
 
   @Override
   public void exceptionCaught(Throwable cause) {
@@ -75,13 +77,8 @@ public abstract class TransportRequestHandler extends MessageHandler<RequestMess
 
   @Override
   public void channelUnregistered() {
-    // Inform the StreamManager that these streams will no longer be read from.
-    for (long streamId : streamIds) {
-      streamManager.connectionTerminated(streamId);
-    }
-    rpcHandler.connectionTerminated(reverseClient);
   }
-
+  
   @Override
   public void handle(RequestMessage request) {
     if (request instanceof ChunkFetchRequest) {
@@ -91,24 +88,6 @@ public abstract class TransportRequestHandler extends MessageHandler<RequestMess
     } else {
       throw new IllegalArgumentException("Unknown request type: " + request);
     }
-  }
-
-  private void processFetchRequest(final ChunkFetchRequest req) {
-    streamIds.add(req.streamChunkId.streamId);
-
-    logger.trace("Received req from {} to fetch block {}", address, req.streamChunkId);
-
-    ManagedBuffer buf;
-    try {
-      buf = streamManager.getChunk(req.streamChunkId.streamId, req.streamChunkId.chunkIndex);
-    } catch (Exception e) {
-      logger.error(String.format(
-        "Error opening block %s for request from %s", req.streamChunkId, address), e);
-      respond(new ChunkFetchFailure(req.streamChunkId, Throwables.getStackTraceAsString(e)));
-      return;
-    }
-
-    respond(new ChunkFetchSuccess(req.streamChunkId, buf));
   }
 
   private void processRpcRequest(final RpcRequest req) {

@@ -47,6 +47,7 @@ private[spark] class PythonRDD(
     pythonIncludes: JList[String],
     preservePartitoning: Boolean,
     pythonExec: String,
+    pythonVer: String,
     broadcastVars: JList[Broadcast[PythonBroadcast]],
     accumulator: Accumulator[JList[Array[Byte]]])
   extends RDD[Array[Byte]](parent) {
@@ -210,6 +211,8 @@ private[spark] class PythonRDD(
         val dataOut = new DataOutputStream(stream)
         // Partition index
         dataOut.writeInt(split.index)
+        // Python version of driver
+        PythonRDD.writeUTF(pythonVer, dataOut)
         // sparkFilesDir
         PythonRDD.writeUTF(SparkFiles.getRootDirectory, dataOut)
         // Python includes (*.zip and *.egg files)
@@ -604,8 +607,7 @@ private[spark] object PythonRDD extends Logging {
    * The thread will terminate after all the data are sent or any exceptions happen.
    */
   private def serveIterator[T](items: Iterator[T], threadName: String): Int = {
-    val serverSocket = new ServerSocket(0, 1)
-    serverSocket.setReuseAddress(true)
+    val serverSocket = new ServerSocket(0, 1, InetAddress.getByName("localhost"))
     // Close the socket if no connection in 3 seconds
     serverSocket.setSoTimeout(3000)
 
@@ -615,9 +617,9 @@ private[spark] object PythonRDD extends Logging {
         try {
           val sock = serverSocket.accept()
           val out = new DataOutputStream(new BufferedOutputStream(sock.getOutputStream))
-          try {
+          Utils.tryWithSafeFinally {
             writeIteratorToStream(items, out)
-          } finally {
+          } {
             out.close()
           }
         } catch {
@@ -721,7 +723,7 @@ private[spark] object PythonRDD extends Logging {
     val converted = convertRDD(rdd, keyConverterClass, valueConverterClass,
       new JavaToWritableConverter)
     val fc = Utils.classForName(outputFormatClass).asInstanceOf[Class[F]]
-    converted.saveAsHadoopFile(path, kc, vc, fc, new JobConf(mergedConf), codec=codec)
+    converted.saveAsHadoopFile(path, kc, vc, fc, new JobConf(mergedConf), codec = codec)
   }
 
   /**
@@ -795,10 +797,10 @@ private class PythonAccumulatorParam(@transient serverHost: String, serverPort: 
 
   val bufferSize = SparkEnv.get.conf.getInt("spark.buffer.size", 65536)
 
-  /** 
+  /**
    * We try to reuse a single Socket to transfer accumulator updates, as they are all added
    * by the DAGScheduler's single-threaded actor anyway.
-   */ 
+   */
   @transient var socket: Socket = _
 
   def openSocket(): Socket = synchronized {
@@ -841,6 +843,7 @@ private class PythonAccumulatorParam(@transient serverHost: String, serverPort: 
  * An Wrapper for Python Broadcast, which is written into disk by Python. It also will
  * write the data into disk after deserialization, then Python can read it from disks.
  */
+// scalastyle:off no.finalize
 private[spark] class PythonBroadcast(@transient var path: String) extends Serializable {
 
   /**
@@ -863,9 +866,9 @@ private[spark] class PythonBroadcast(@transient var path: String) extends Serial
     val file = File.createTempFile("broadcast", "", dir)
     path = file.getAbsolutePath
     val out = new FileOutputStream(file)
-    try {
+    Utils.tryWithSafeFinally {
       Utils.copyStream(in, out)
-    } finally {
+    } {
       out.close()
     }
   }
@@ -882,3 +885,4 @@ private[spark] class PythonBroadcast(@transient var path: String) extends Serial
     }
   }
 }
+// scalastyle:on no.finalize

@@ -20,13 +20,18 @@ package org.apache.spark.network.server;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
+import io.netty.channel.Channel;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
+import org.accelio.jxio.ServerSession;
 import org.apache.spark.network.buffer.ManagedBuffer;
+
+import com.google.common.base.Preconditions;
 
 /**
  * StreamManager which allows registration of an Iterator&lt;ManagedBuffer&gt;, which are individually
@@ -36,18 +41,24 @@ public class OneForOneStreamManager extends StreamManager {
   private final Logger logger = LoggerFactory.getLogger(OneForOneStreamManager.class);
 
   private final AtomicLong nextStreamId;
-  private final Map<Long, StreamState> streams;
+  private final ConcurrentHashMap<Long, StreamState> streams;
 
   /** State of a single stream. */
   private static class StreamState {
     final Iterator<ManagedBuffer> buffers;
+
+    // The netty channel associated to the stream
+    Channel associatedChannel = null;
+    
+    // The jxio session associated to the stream
+    ServerSession associatedSession = null;
 
     // Used to keep track of the index of the buffer that the user has retrieved, just to ensure
     // that the caller only requests each chunk one at a time, in order.
     int curChunk = 0;
 
     StreamState(Iterator<ManagedBuffer> buffers) {
-      this.buffers = buffers;
+      this.buffers = Preconditions.checkNotNull(buffers);
     }
   }
 
@@ -58,6 +69,20 @@ public class OneForOneStreamManager extends StreamManager {
     streams = new ConcurrentHashMap<Long, StreamState>();
   }
 
+  @Override
+  public void registerChannel(Channel channel, long streamId) {
+    if (streams.containsKey(streamId)) {
+      streams.get(streamId).associatedChannel = channel;
+    }
+  }
+
+  @Override
+  public void registerSession(ServerSession session, long streamId) {
+    if (streams.containsKey(streamId)) {
+      streams.get(streamId).associatedSession = session;
+    }
+  }
+  
   @Override
   public ManagedBuffer getChunk(long streamId, int chunkIndex) {
     StreamState state = streams.get(streamId);
@@ -80,12 +105,33 @@ public class OneForOneStreamManager extends StreamManager {
   }
 
   @Override
-  public void connectionTerminated(long streamId) {
-    // Release all remaining buffers.
-    StreamState state = streams.remove(streamId);
-    if (state != null && state.buffers != null) {
-      while (state.buffers.hasNext()) {
-        state.buffers.next().release();
+  public void connectionChannelTerminated(Channel channel) {
+    // Close all streams which have been associated with the channel.
+    for (Map.Entry<Long, StreamState> entry: streams.entrySet()) {
+      StreamState state = entry.getValue();
+      if (state.associatedChannel == channel) {
+        streams.remove(entry.getKey());
+
+        // Release all remaining buffers.
+        while (state.buffers.hasNext()) {
+          state.buffers.next().release();
+        }
+      }
+    }
+  }
+  
+  @Override
+  public void connectionSessionTerminated(ServerSession session) {
+    // Close all streams which have been associated with the channel.
+    for (Map.Entry<Long, StreamState> entry: streams.entrySet()) {
+      StreamState state = entry.getValue();
+      if (state.associatedSession == session) {
+        streams.remove(entry.getKey());
+
+        // Release all remaining buffers.
+        while (state.buffers.hasNext()) {
+          state.buffers.next().release();
+        }
       }
     }
   }

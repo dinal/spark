@@ -9,7 +9,10 @@ import org.accelio.jxio.EventName;
 import org.accelio.jxio.EventReason;
 import org.accelio.jxio.Msg;
 import org.accelio.jxio.ServerSession;
+import org.apache.spark.network.buffer.ManagedBuffer;
+import org.apache.spark.network.protocol.ChunkFetchFailure;
 import org.apache.spark.network.protocol.ChunkFetchRequest;
+import org.apache.spark.network.protocol.ChunkFetchSuccess;
 import org.apache.spark.network.protocol.Encodable;
 import org.apache.spark.network.protocol.Message;
 import org.apache.spark.network.protocol.RequestMessage;
@@ -117,6 +120,24 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
     }
   }
 
+  @Override
+  protected void processFetchRequest(final ChunkFetchRequest req) {
+	
+	logger.trace("Received req from {} to fetch block {}", address, req.streamChunkId);
+	
+	ManagedBuffer buf;
+	try {
+	  buf = streamManager.getChunk(req.streamChunkId.streamId, req.streamChunkId.chunkIndex);
+	} catch (Exception e) {
+	  logger.error(String.format(
+	    "Error opening block %s for request from %s", req.streamChunkId, address), e);
+	  respond(new ChunkFetchFailure(req.streamChunkId, Thread.currentThread().getStackTrace().toString()));
+	  return;
+	}
+	
+	respond(new ChunkFetchSuccess(req.streamChunkId, buf));
+  }
+  
   @Override
   public void respond(Encodable result) {
     logger.info(this.session + " adding to backlog "+(Message) result);

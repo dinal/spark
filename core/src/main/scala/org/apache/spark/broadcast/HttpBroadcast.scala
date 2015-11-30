@@ -125,7 +125,7 @@ private[broadcast] object HttpBroadcast extends Logging {
         securityManager = securityMgr
         if (isDriver) {
           createServer(conf)
-          conf.set("spark.httpBroadcast.uri",  serverUri)
+          conf.set("spark.httpBroadcast.uri", serverUri)
         }
         serverUri = conf.get("spark.httpBroadcast.uri")
         cleaner = new MetadataCleaner(MetadataCleanerType.HTTP_BROADCAST, cleanup, conf)
@@ -165,7 +165,7 @@ private[broadcast] object HttpBroadcast extends Logging {
   private def write(id: Long, value: Any) {
     val file = getFile(id)
     val fileOutputStream = new FileOutputStream(file)
-    try {
+    Utils.tryWithSafeFinally {
       val out: OutputStream = {
         if (compress) {
           compressionCodec.compressedOutputStream(fileOutputStream)
@@ -175,16 +175,19 @@ private[broadcast] object HttpBroadcast extends Logging {
       }
       val ser = SparkEnv.get.serializer.newInstance()
       val serOut = ser.serializeStream(out)
-      serOut.writeObject(value)
-      serOut.close()
+      Utils.tryWithSafeFinally {
+        serOut.writeObject(value)
+      } {
+        serOut.close()
+      }
       files += file
-    } finally {
+    } {
       fileOutputStream.close()
     }
   }
 
   private def read[T: ClassTag](id: Long): T = {
-    logDebug("broadcast read server: " +  serverUri + " id: broadcast-" + id)
+    logDebug("broadcast read server: " + serverUri + " id: broadcast-" + id)
     val url = serverUri + "/" + BroadcastBlockId(id).name
 
     var uc: URLConnection = null
@@ -212,9 +215,11 @@ private[broadcast] object HttpBroadcast extends Logging {
     }
     val ser = SparkEnv.get.serializer.newInstance()
     val serIn = ser.deserializeStream(in)
-    val obj = serIn.readObject[T]()
-    serIn.close()
-    obj
+    Utils.tryWithSafeFinally {
+      serIn.readObject[T]()
+    } {
+      serIn.close()
+    }
   }
 
   /**

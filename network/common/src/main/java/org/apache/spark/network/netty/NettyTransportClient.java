@@ -1,5 +1,5 @@
 /*
-fetchChunk * Licensed to the Apache Software Foundation (ASF) under one or more
+ * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
  * The ASF licenses this file to You under the Apache License, Version 2.0
@@ -27,13 +27,12 @@ import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
 import com.google.common.util.concurrent.SettableFuture;
-
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.apache.spark.network.client.ChunkReceivedCallback;
 import org.apache.spark.network.client.RpcResponseCallback;
 import org.apache.spark.network.client.TransportClient;
@@ -167,6 +166,34 @@ public class NettyTransportClient extends TransportClient {
           }
         }
       });
+  }
+
+  /**
+   * Synchronously sends an opaque message to the RpcHandler on the server-side, waiting for up to
+   * a specified timeout for a response.
+   */
+  public byte[] sendRpcSync(byte[] message, long timeoutMs) {
+    final SettableFuture<byte[]> result = SettableFuture.create();
+
+    sendRpc(message, new RpcResponseCallback() {
+      @Override
+      public void onSuccess(byte[] response) {
+        result.set(response);
+      }
+
+      @Override
+      public void onFailure(Throwable e) {
+        result.setException(e);
+      }
+    });
+
+    try {
+      return result.get(timeoutMs, TimeUnit.MILLISECONDS);
+    } catch (ExecutionException e) {
+      throw Throwables.propagate(e.getCause());
+    } catch (Exception e) {
+      throw Throwables.propagate(e);
+    }
   }
 
   @Override

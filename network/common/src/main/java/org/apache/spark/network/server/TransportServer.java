@@ -18,7 +18,6 @@
 package org.apache.spark.network.server;
 
 import java.io.Closeable;
-
 public interface TransportServer extends Closeable{
   public int getPort();
 }

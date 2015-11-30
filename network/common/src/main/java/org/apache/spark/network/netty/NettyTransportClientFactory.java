@@ -29,7 +29,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
 import com.google.common.collect.Lists;
-
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.Channel;
@@ -38,7 +37,6 @@ import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.spark.network.client.TransportClient;
@@ -175,12 +173,14 @@ public class NettyTransportClientFactory implements TransportClientFactory{
       .option(ChannelOption.ALLOCATOR, pooledAllocator);
 
     final AtomicReference<NettyTransportClient> clientRef = new AtomicReference<NettyTransportClient>();
+    final AtomicReference<Channel> channelRef = new AtomicReference<Channel>();
 
     bootstrap.handler(new ChannelInitializer<SocketChannel>() {
       @Override
       public void initChannel(SocketChannel ch) {
         TransportChannelHandler clientHandler = context.initializePipeline(ch);
         clientRef.set(clientHandler.getClient());
+        channelRef.set(ch);
       }
     });
 
@@ -195,6 +195,7 @@ public class NettyTransportClientFactory implements TransportClientFactory{
     }
 
     NettyTransportClient client = clientRef.get();
+	Channel channel = channelRef.get();
     assert client != null : "Channel future completed successfully with null client";
 
     // Execute any client bootstraps synchronously before marking the Client as successful.
@@ -202,7 +203,7 @@ public class NettyTransportClientFactory implements TransportClientFactory{
     logger.debug("Connection to {} successful, running bootstraps...", address);
     try {
       for (TransportClientBootstrap clientBootstrap : clientBootstraps) {
-        clientBootstrap.doBootstrap(client);
+        clientBootstrap.doBootstrap(client, channel);
       }
     } catch (Exception e) { // catch non-RuntimeExceptions too as bootstrap may be written in Scala
       long bootstrapTimeMs = (System.nanoTime() - preBootstrap) / 1000000;

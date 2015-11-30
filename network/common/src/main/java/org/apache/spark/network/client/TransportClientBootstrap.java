@@ -17,7 +17,7 @@
 
 package org.apache.spark.network.client;
 
-import org.apache.spark.network.client.TransportClient;
+import io.netty.channel.Channel;
 
 /**
  * A bootstrap which is executed on a TransportClient before it is returned to the user.
@@ -30,5 +30,5 @@ import org.apache.spark.network.client.TransportClient;
  */
 public interface TransportClientBootstrap {
   /** Performs the bootstrapping operation, throwing an exception on failure. */
-  public void doBootstrap(TransportClient client) throws RuntimeException;
+  void doBootstrap(TransportClient client, Channel channel) throws RuntimeException;
 }

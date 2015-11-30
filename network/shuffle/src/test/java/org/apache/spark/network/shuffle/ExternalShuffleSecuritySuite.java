@@ -18,6 +18,7 @@
 package org.apache.spark.network.shuffle;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 import org.junit.After;
 import org.junit.Before;
@@ -27,10 +28,11 @@ import static org.junit.Assert.*;
 
 import org.apache.spark.network.TestUtils;
 import org.apache.spark.network.netty.NettyTransportContext;
-import org.apache.spark.network.netty.NettyTransportServer;
-import org.apache.spark.network.sasl.SaslRpcHandler;
+import org.apache.spark.network.sasl.SaslServerBootstrap;
 import org.apache.spark.network.sasl.SecretKeyHolder;
 import org.apache.spark.network.server.RpcHandler;
+import org.apache.spark.network.server.TransportServer;
+import org.apache.spark.network.server.TransportServerBootstrap;
 import org.apache.spark.network.shuffle.protocol.ExecutorShuffleInfo;
 import org.apache.spark.network.util.SystemPropertyConfigProvider;
 import org.apache.spark.network.util.TransportConf;
@@ -38,33 +40,35 @@ import org.apache.spark.network.util.TransportConf;
 public class ExternalShuffleSecuritySuite {
 
   TransportConf conf = new TransportConf(new SystemPropertyConfigProvider());
-  NettyTransportServer server;
+  TransportServer server;
 
   @Before
   public void beforeEach() {
-    RpcHandler handler = new SaslRpcHandler(new ExternalShuffleBlockHandler(conf),
-      new TestSecretKeyHolder("my-app-id", "secret"));
-    NettyTransportContext context = new NettyTransportContext(conf, handler);
-    this.server = context.createServer();
+  NettyTransportContext context = new NettyTransportContext(conf, new ExternalShuffleBlockHandler(conf));
+  TransportServerBootstrap bootstrap = new SaslServerBootstrap(conf,
+        new TestSecretKeyHolder("my-app-id", "secret"));
+    this.server = context.createServer(Arrays.asList(bootstrap));
   }
 
   @After
   public void afterEach() {
-    if (server != null) {
-      server.close();
-      server = null;
-    }
+  	try {
+      if (server != null) {
+        server.close();
+        server = null;
+      }
+  	} catch (IOException ex) {}
   }
 
   @Test
   public void testValid() throws IOException {
-    validate("my-app-id", "secret");
+    validate("my-app-id", "secret", false);
   }
 
   @Test
   public void testBadAppId() {
     try {
-      validate("wrong-app-id", "secret");
+      validate("wrong-app-id", "secret", false);
     } catch (Exception e) {
       assertTrue(e.getMessage(), e.getMessage().contains("Wrong appId!"));
     }
@@ -73,16 +77,21 @@ public class ExternalShuffleSecuritySuite {
   @Test
   public void testBadSecret() {
     try {
-      validate("my-app-id", "bad-secret");
+      validate("my-app-id", "bad-secret", false);
     } catch (Exception e) {
       assertTrue(e.getMessage(), e.getMessage().contains("Mismatched response"));
     }
   }
 
+  @Test
+  public void testEncryption() throws IOException {
+    validate("my-app-id", "secret", true);
+  }
+
   /** Creates an ExternalShuffleClient and attempts to register with the server. */
-  private void validate(String appId, String secretKey) throws IOException {
+  private void validate(String appId, String secretKey, boolean encrypt) throws IOException {
     ExternalShuffleClient client =
-      new ExternalShuffleClient(conf, new TestSecretKeyHolder(appId, secretKey), true);
+      new ExternalShuffleClient(conf, new TestSecretKeyHolder(appId, secretKey), true, encrypt);
     client.init(appId);
     // Registration either succeeds or throws an exception.
     client.registerWithShuffleServer(TestUtils.getLocalHost(), server.getPort(), "exec0",

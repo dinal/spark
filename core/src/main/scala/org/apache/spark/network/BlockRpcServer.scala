@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.network.netty
+package org.apache.spark.network
 
 import java.nio.ByteBuffer
 

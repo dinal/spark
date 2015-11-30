@@ -18,8 +18,12 @@
 package org.apache.spark.network.sasl;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Map;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -29,6 +33,7 @@ import static org.junit.Assert.*;
 
 import org.apache.spark.network.TestUtils;
 import org.apache.spark.network.TransportContext;
+import org.apache.spark.network.netty.NettyTransportContext;
 import org.apache.spark.network.client.RpcResponseCallback;
 import org.apache.spark.network.client.TransportClient;
 import org.apache.spark.network.client.TransportClientBootstrap;
@@ -37,7 +42,9 @@ import org.apache.spark.network.server.OneForOneStreamManager;
 import org.apache.spark.network.server.RpcHandler;
 import org.apache.spark.network.server.StreamManager;
 import org.apache.spark.network.server.TransportServer;
+import org.apache.spark.network.server.TransportServerBootstrap;
 import org.apache.spark.network.shuffle.ExternalShuffleBlockHandler;
+import org.apache.spark.network.util.MapConfigProvider;
 import org.apache.spark.network.util.SystemPropertyConfigProvider;
 import org.apache.spark.network.util.TransportConf;
 
@@ -45,7 +52,7 @@ public class SaslIntegrationSuite {
   static ExternalShuffleBlockHandler handler;
   static TransportServer server;
   static TransportConf conf;
-  static TransportContext context;
+  static NettyTransportContext context;
 
   TransportClientFactory clientFactory;
 
@@ -72,10 +79,13 @@ public class SaslIntegrationSuite {
   @BeforeClass
   public static void beforeAll() throws IOException {
     SecretKeyHolder secretKeyHolder = new TestSecretKeyHolder("good-key");
-    SaslRpcHandler handler = new SaslRpcHandler(new TestRpcHandler(), secretKeyHolder);
-    conf = new TransportConf(new SystemPropertyConfigProvider());
-    context = TransportContext.ContextFactory.createTransportContext(conf, handler);
-    server = context.createServer();
+    Map<String, String> configMap = Maps.newHashMap();
+    configMap.put("spark.shuffle.network.type", "netty");
+    conf = new TransportConf(new MapConfigProvider(configMap));
+    context = new NettyTransportContext(conf, new TestRpcHandler());
+
+    TransportServerBootstrap bootstrap = new SaslServerBootstrap(conf, secretKeyHolder);
+    server = context.createServer(Arrays.asList(bootstrap));
   }
 
 
@@ -95,7 +105,7 @@ public class SaslIntegrationSuite {
       clientFactory = null;
     }
   }
-/*
+
   @Test
   public void testGoodClient() throws IOException {
     clientFactory = context.createClientFactory(
@@ -147,7 +157,6 @@ public class SaslIntegrationSuite {
   @Test
   public void testNoSaslServer() {
     RpcHandler handler = new TestRpcHandler();
-    TransportContext context = TransportContext.ContextFactory.createTransportContext("netty", conf, handler);
     clientFactory = context.createClientFactory(
       Lists.<TransportClientBootstrap>newArrayList(
         new SaslClientBootstrap(conf, "app-id", new TestSecretKeyHolder("key"))));
@@ -157,10 +166,12 @@ public class SaslIntegrationSuite {
     } catch (Exception e) {
       assertTrue(e.getMessage(), e.getMessage().contains("Digest-challenge format violation"));
     } finally {
-      server.close();
+    	try {
+    	  server.close();
+    	} catch (IOException ex) {}
     }
   }
-*/
+
   /** RPC handler which simply responds with the message it received. */
   public static class TestRpcHandler extends RpcHandler {
     @Override
