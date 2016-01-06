@@ -24,6 +24,6 @@ class ShuffleNettySuite extends ShuffleSuite with BeforeAndAfterAll {
   // This test suite should run all tests in ShuffleSuite with Netty shuffle mode.
 
   override def beforeAll() {
-    conf.set("spark.shuffle.blockTransferService", "netty")
+    conf.set("spark.shuffle.network.type", "netty")
   }
 }

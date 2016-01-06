@@ -322,7 +322,7 @@ object SparkEnv extends Logging {
 
     val shuffleMemoryManager = new ShuffleMemoryManager(conf)
     val blockTransferService =
-      conf.get("spark.shuffle.blockTransferService", "netty").toLowerCase match {
+      conf.get("spark.shuffle.network.type", "netty").toLowerCase match {
         case "netty" =>
           new NettyBlockTransferService(conf, securityManager, numUsableCores)
         case "nio" =>

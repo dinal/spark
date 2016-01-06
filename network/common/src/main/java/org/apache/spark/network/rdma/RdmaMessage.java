@@ -27,7 +27,7 @@ public class RdmaMessage {
   public boolean encodedFully = false;
   public boolean decodedFully = false;
   private final int msgSize;
-  private int encodedSize;
+  private int encodedSize = 0;
 
   public RdmaMessage(Message msg, long id) {
     this.msg = msg;
@@ -75,7 +75,7 @@ public class RdmaMessage {
   // encodes only part of the msg that can fit into the buffer
   private void encodePartial(Message.Type type, boolean includeMsgHeader, ByteBuffer buf) {
     logger.debug(this +" encodePartial type=" + type + " msg=" + msg + " msgSize=" + msgSize);
-    int sizeToWrite;
+    int sizeToWrite = 0;
     switch (type) {
     case RpcRequest:
       RpcRequest rpcMsg = (RpcRequest) msg;
@@ -134,13 +134,14 @@ public class RdmaMessage {
         chunkResp.streamChunkId.encode(buf);
         encodedSize += chunkResp.streamChunkId.encodedLength();
       }
-      sizeToWrite = Math.min(buf.remaining(), msgSize - encodedSize);
       try {
-        buf.put(chunkResp.buffer.nioByteBuffer().array(),
-            (int)chunkResp.buffer.size() - (msgSize - encodedSize), sizeToWrite);
-      } catch (IOException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
+        ByteBuffer dataBuff = chunkResp.buffer.nioByteBuffer();
+        sizeToWrite = Math.min(buf.remaining(), msgSize - encodedSize);
+        dataBuff.position(dataBuff.capacity() - (msgSize - encodedSize));
+        dataBuff.limit(dataBuff.position() + sizeToWrite);
+        buf.put(dataBuff);
+      } catch (Exception e) {
+        logger.error("Error occurred while encoding msg "+e+" "+e.getStackTrace());
       }
       encodedSize += sizeToWrite;
       break;

@@ -57,7 +57,6 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
       executor.execute(new Runnable() {
         @Override
         public void run() {
-          logger.info(session + " setting new msg " + m);
           currentMsg = m;
           processMsg(m);
         }
@@ -71,8 +70,8 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
   }
 
   private void processMsg(Msg m) {
+   // logger.info(this.session + " recieved msg " + m);
     ByteBuffer data = m.getIn();
-    logger.info(this.session + " recieved msg " + data);
     if (data.limit() == 0) {
       // this means we received a fetch request in the past
       // which didn't fit fully in one buffer
@@ -80,13 +79,11 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
     } else {
       if (proccessedReq == null) {
         long dataLength = data.getLong();
-        logger.info(this.session + " dataLength " + dataLength);
         proccessedReqType = Message.Type.decode(data);
-        logger.info(this.session + " proccessedReqType " + proccessedReqType);
         if (dataLength <= data.capacity()) {
           // msg fits in 1 buffer, no need to concatenate buffers
           RequestMessage decoded = decode(proccessedReqType, data);
-          logger.info(this.session + " decoded, going to handle " + decoded);
+          //logger.info(this.session + " decoded, going to handle " + decoded);
           handle(decoded);
           return;
         } else {
@@ -95,7 +92,7 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
         }
       }
       proccessedReq.put(data);
-      logger.info(this.session + " proccessedReq " + proccessedReq);
+     // logger.info(this.session + " proccessedReq " + proccessedReq);
       if (proccessedReq.hasRemaining()) {
         // return empty, not all data is received yet
         encodeAndSend();
@@ -103,7 +100,7 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
         // got all data, can decode
         RequestMessage decoded = decode(proccessedReqType, proccessedReq);
         proccessedReq = null;
-        logger.info(this.session + " decoded, going to handle " + decoded);
+      //  logger.info(this.session + "msg= "+m+" decoded, going to handle " + decoded);
         handle(decoded);
       }
     }
@@ -130,7 +127,7 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
 	  buf = streamManager.getChunk(req.streamChunkId.streamId, req.streamChunkId.chunkIndex);
 	} catch (Exception e) {
 	  logger.error(String.format(
-	    "Error opening block %s for request from %s", req.streamChunkId, address), e);
+	    "%s Error opening block %s for request from %s", this.session ,req.streamChunkId, address), e);
 	  respond(new ChunkFetchFailure(req.streamChunkId, Thread.currentThread().getStackTrace().toString()));
 	  return;
 	}
@@ -140,7 +137,7 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
   
   @Override
   public void respond(Encodable result) {
-    logger.info(this.session + " adding to backlog "+(Message) result);
+   // logger.info(this.session + " adding to backlog "+(Message) result);
     backlog.add(new RdmaMessage((Message) result, 0));
     encodeAndSend();
   }
@@ -149,7 +146,7 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
     try {
       RdmaMessage rdmaMsg = backlog.get(0);
       List<Msg> msgsToSend = rdmaMsg.encode(this);
-      logger.info(this.session + " encodeAndSend encoded="+msgsToSend);
+    //  logger.info(this.session + " encodeAndSend encoded="+msgsToSend+" msg="+rdmaMsg);
       // always will include only one msg since we are replaying to each msg
       // immediately, and not accumulating them
       assert msgsToSend.size() == 1;

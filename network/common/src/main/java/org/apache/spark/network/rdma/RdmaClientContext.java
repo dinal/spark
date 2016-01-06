@@ -38,6 +38,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   private final EventQueueHandler eqh;
   private final ClientSession cs;
   private final MsgPool msgPool;
+  private final int CHUNK_BATCH = 3;
   private boolean established = false;
   private boolean close = false;
   private ConcurrentMap<Long, RpcResponseCallback> rpcCallbacks =
@@ -50,6 +51,8 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   private Message.Type proccessedRespType;
   private int reqHandled = 0;
   private Thread contextThread;
+  //TEMP
+  private int nextChunk = 0;
 
   public RdmaClientContext(URI uri) {
     this.uri = uri;
@@ -80,27 +83,42 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   }
 
   private void sendRequests() {
+    boolean needMoreMsgs = false;
     if (proccessedResp == null) {
-      for (RdmaMessage entry : tasks) {
+      while (!tasks.isEmpty()) {
+        RdmaMessage entry = tasks.peek(); 
         try {
           List<Msg> msgsToSend = entry.encode(this);
-          if (msgsToSend.isEmpty()) 
+          if (msgsToSend.isEmpty()) {
+            //logger.info(this+" no msgs to send, breaking "+entry.msg);
             break;
+          }
           
-          logger.info(Thread.currentThread() + " "+this + " Sending request {} to {} with msgs {}",
+          if (entry.msg instanceof ChunkFetchRequest) {
+            ChunkFetchRequest chunk = (ChunkFetchRequest)entry.msg;
+            if (chunk.streamChunkId.chunkIndex !=nextChunk) {
+              logger.error(this+" chunk out of order nextChunk: "+nextChunk+" msg: "+entry.msg+" tasks: "+tasks);
+            }
+            nextChunk++;
+          }
+          
+          logger.info(this + " Sending request {} to {} with msgs {}",
               entry, uri.getHost(), msgsToSend);
           
           for (Msg m : msgsToSend) {
             cs.sendRequest(m);
           }
           if (entry.encodedFully) {
-            tasks.remove(entry);
+           // logger.info(this + " msg was encoded fully, removing for tasks. "+entry.msg);
+            tasks.poll();
+          } else {
+            needMoreMsgs = true;
           }
         } catch (Exception e) {
-          tasks.remove(entry);
+          tasks.poll();
           String errorMsg = String.format("Failed to send RPC %s to %s: %s", entry.id,
-              uri.getHost(), e.getCause());
-          logger.error(errorMsg, e.getCause());
+              uri.getHost(), e.getMessage());
+          logger.error(errorMsg, e.getMessage());
           // close();
           try {
             if (entry.msg instanceof RpcRequest) {
@@ -121,10 +139,12 @@ public class RdmaClientContext implements Runnable, MessageProvider {
     // waiting for chunks from server, sending empty buffers so the server have
     // were to write
     try {
-      if (!chunkCallbacks.isEmpty()) {
+      if (needMoreMsgs || proccessedResp != null) {
         Msg m;
-        while ((m = msgPool.getMsg()) != null) {
-          logger.info(Thread.currentThread() + " "+this + " Sending empty request {}", m);
+        //send half of the msgs in the msg pool
+        for (int i=0; i<Math.min(msgPool.count(), CHUNK_BATCH); i++) {
+          m = msgPool.getMsg();
+          //logger.info(this + " Sending empty request {}", m);
           cs.sendRequest(m);
         }
       }
@@ -135,6 +155,9 @@ public class RdmaClientContext implements Runnable, MessageProvider {
 
   // msg can be null
   public Msg getMsg() {
+    if (msgPool.count() == 0) {
+      return null;
+    }
     Msg msg = msgPool.getMsg();
     return msg;
   }
@@ -162,30 +185,30 @@ public class RdmaClientContext implements Runnable, MessageProvider {
 
     public void onResponse(Msg m) {
       logger.info(RdmaClientContext.this + "client onResponse m=" + m);
-      ByteBuffer buf = m.getIn();
-      if (buf.limit() == 0) {
+      ByteBuffer msgIn = m.getIn();
+      if (m.getIn().limit() == 0) {
         // response for UploadBlock that didn't fit into 1 buffer
         msgPool.releaseMsg(m);
         return;
       }
       if (proccessedResp == null) {
-        long dataSize = buf.getLong();
-        proccessedRespType = Message.Type.decode(buf);
-        if (dataSize <= buf.capacity()) {
+        //new response, not in the middle of a getting chunk
+        long dataSize = msgIn.getLong();
+        proccessedRespType = Message.Type.decode(msgIn);
+        if (dataSize <= msgIn.capacity()) {
           processResponse(proccessedRespType, m);
           return;
         } else {
           proccessedResp = ByteBuffer.allocate((int) dataSize - RdmaMessage.HEADER_LENGTH);
         }
       }
-      proccessedResp.put(buf);
+      proccessedResp.put(msgIn);
       if (proccessedResp.hasRemaining()) {
         // not finished yet
         msgPool.releaseMsg(m);
         return;
-      } else {
-        processResponse(proccessedRespType, m);
       }
+      processResponse(proccessedRespType, m);
 
     }
 
@@ -251,11 +274,6 @@ public class RdmaClientContext implements Runnable, MessageProvider {
         } else {
           chunkResp = ChunkFetchSuccess.decode(buf);
           msgPool.releaseMsg(msg);
-          /*ByteBuffer newBuf = ByteBuffer.allocate(buf.remaining());
-          newBuf.put(buf);
-          newBuf.position(0);
-          chunkResp = ChunkFetchSuccess.decode(newBuf);
-          msgPool.releaseMsg(msg);*/
         }
         ChunkReceivedCallback chunkListener = retriveChunkCallback(
             chunkResp.streamChunkId.hashCode());
@@ -283,7 +301,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   }
 
   public void close() {
-    logger.info("Closing RDdmaClient");
+    logger.info(this +" Closing RdmaClient");
     if (close) return;
     close = true;
     eqh.breakEventLoop();
@@ -321,6 +339,8 @@ public class RdmaClientContext implements Runnable, MessageProvider {
     proccessedResp = null;
     proccessedRespType = null;
     reqHandled = 0;
+    //
+    nextChunk = 0;
   }
 
   public boolean isConnected() {

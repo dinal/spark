@@ -81,7 +81,7 @@ public final class ChunkFetchSuccess implements ResponseMessage {
   public static ChunkFetchSuccess decode(Msg msg) {
     ByteBuffer buf = msg.getIn();
     StreamChunkId streamChunkId = StreamChunkId.decode(buf);
-    RdmaManagedBuffer managedBuf = new RdmaManagedBuffer( msg);
+    RdmaManagedBuffer managedBuf = new RdmaManagedBuffer(msg);
     return new ChunkFetchSuccess(streamChunkId, managedBuf);
   }
 

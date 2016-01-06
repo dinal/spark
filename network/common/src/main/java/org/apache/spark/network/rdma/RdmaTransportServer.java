@@ -52,11 +52,12 @@ public class RdmaTransportServer implements Runnable, TransportServer, ServerRes
   private boolean stop;
 
   public RdmaTransportServer(RdmaTransportContext context, InetSocketAddress address) {
+    logger.info("New RdmaTransportServer listening on " + address);
     try {
       URI uri = new URI("rdma://" + address.getHostName() + ":" + address.getPort());
       MsgPool pool = new MsgPool(SERVER_INITIAL_BUFFER, SERVER_BUFFER_SIZE, SERVER_BUFFER_SIZE);
       mMsgPools.add(pool);
-      mEqh = new EventQueueHandler(new EqhCallbacks(SERVER_INC_BUFFER, 0, SERVER_BUFFER_SIZE));
+      mEqh = new EventQueueHandler(new EqhCallbacks(SERVER_INC_BUFFER, SERVER_BUFFER_SIZE, SERVER_BUFFER_SIZE));
       mEqh.bindMsgPool(pool);
       mListener = new ServerPortal(mEqh, uri, new PortalServerCallbacks(), null);
       for (int i = 0; i < executers.length; i++) {
@@ -105,8 +106,9 @@ public class RdmaTransportServer implements Runnable, TransportServer, ServerRes
         for (Entry<ServerSession, List<Msg>> entry : responses.entrySet()) {
           for (Msg m : entry.getValue()) {
             try {
+             // logger.info("send on session: "+entry.getKey()+" msg: "+m);
               entry.getKey().sendResponse(m);
-              logger.info(this+" sending on session="+entry.getKey()+" msg="+entry.getValue());
+              //logger.info(this+" sending on session="+entry.getKey()+" msg="+entry.getValue());
             } catch (Exception e) {
               logger.error("Error Sending response to " + entry.getKey());
             }
@@ -156,7 +158,7 @@ public class RdmaTransportServer implements Runnable, TransportServer, ServerRes
 
   @Override
   public void respond(ServerSession session, Msg msg) {
-    logger.info(this+" adding to respond list session="+session+" msg="+msg);
+    //logger.info(this+" adding to respond list session="+session+" msg="+msg);
     synchronized (responses) {
       List<Msg> list = responses.get(session);
       if (list == null) {
