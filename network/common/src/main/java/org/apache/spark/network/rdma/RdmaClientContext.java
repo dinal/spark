@@ -38,9 +38,12 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   private final EventQueueHandler eqh;
   private final ClientSession cs;
   private final MsgPool msgPool;
-  private final int CHUNK_BATCH = 3;
+  private final int CHUNK_BATCH = 5;
+  private final Thread contextThread;
   private boolean established = false;
-  private boolean close = false;
+  private boolean notifyClose = false;
+  private boolean closed = false;
+  private boolean sessionClosed = false;
   private ConcurrentMap<Long, RpcResponseCallback> rpcCallbacks =
       new ConcurrentHashMap<Long, RpcResponseCallback>();
   private ConcurrentMap<Long, ChunkReceivedCallback> chunkCallbacks =
@@ -50,15 +53,12 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   private ByteBuffer proccessedResp = null;
   private Message.Type proccessedRespType;
   private int reqHandled = 0;
-  private Thread contextThread;
-  //TEMP
-  private int nextChunk = 0;
 
   public RdmaClientContext(URI uri) {
     this.uri = uri;
     eqh = JxioResourceManager.getEqh();
-    msgPool = JxioResourceManager.getMsgPool(CLIENT_BUF_COUNT, Constants.MSGPOOL_BUF_SIZE / 2,
-        Constants.MSGPOOL_BUF_SIZE / 2);
+    msgPool = JxioResourceManager.getMsgPool(CLIENT_BUF_COUNT, Constants.MSGPOOL_BUF_SIZE,
+        Constants.MSGPOOL_BUF_SIZE);
     cs = new ClientSession(eqh, uri, new ClientCallbacks());
     eqh.runEventLoop(1, EventQueueHandler.INFINITE_DURATION); // wait for
                                                               // established
@@ -69,21 +69,23 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   }
 
   public void run() {
-    while (!close) {
+    while (!notifyClose && !sessionClosed) {
       sendRequests();
       eqh.runEventLoop(EventQueueHandler.INFINITE_EVENTS, 1000);
     }
-    cs.close();
-    eqh.runEventLoop(EventQueueHandler.INFINITE_EVENTS, EventQueueHandler.INFINITE_DURATION);
+    if (!sessionClosed) {
+      cs.close();
+      eqh.runEventLoop(EventQueueHandler.INFINITE_EVENTS, EventQueueHandler.INFINITE_DURATION);
+    }
     JxioResourceManager.returnEqh(eqh);
     JxioResourceManager.returnMsgPool(msgPool);
     synchronized (this) {
       this.notify();
     }
+    closed = true;
   }
 
   private void sendRequests() {
-    boolean needMoreMsgs = false;
     if (proccessedResp == null) {
       while (!tasks.isEmpty()) {
         RdmaMessage entry = tasks.peek(); 
@@ -111,8 +113,6 @@ public class RdmaClientContext implements Runnable, MessageProvider {
           if (entry.encodedFully) {
            // logger.info(this + " msg was encoded fully, removing for tasks. "+entry.msg);
             tasks.poll();
-          } else {
-            needMoreMsgs = true;
           }
         } catch (Exception e) {
           tasks.poll();
@@ -139,13 +139,16 @@ public class RdmaClientContext implements Runnable, MessageProvider {
     // waiting for chunks from server, sending empty buffers so the server have
     // were to write
     try {
-      if (needMoreMsgs || proccessedResp != null) {
+      if (!chunkCallbacks.isEmpty()) {
         Msg m;
-        //send half of the msgs in the msg pool
-        for (int i=0; i<Math.min(msgPool.count(), CHUNK_BATCH); i++) {
-          m = msgPool.getMsg();
-          //logger.info(this + " Sending empty request {}", m);
-          cs.sendRequest(m);
+        for (int i=0; i< CHUNK_BATCH; i++) {
+          if (msgPool.count() > 0) {
+            m = msgPool.getMsg();
+            logger.info(this + " Sending empty request {}", m);
+            cs.sendRequest(m);
+          } else {
+            break;
+          }
         }
       }
     } catch (Exception e) {
@@ -178,7 +181,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
       logger.info(RdmaClientContext.this + " onSessionEvent " + event);
       if (event == EventName.SESSION_CLOSED || event == EventName.SESSION_ERROR
           || event == EventName.SESSION_REJECT) { // normal exit
-        close = true;
+        sessionClosed = true;
         eqh.breakEventLoop();
       }
     }
@@ -301,18 +304,21 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   }
 
   public void close() {
-    logger.info(this +" Closing RdmaClient");
-    if (close) return;
-    close = true;
+    logger.info(this +" Closing RdmaClient, already closed="+closed);
+    if (closed) return;
+    notifyClose = true;
     eqh.breakEventLoop();
     synchronized (this) {
-      try {
-        //wait until jxio closes the connection
-        wait();
-      } catch (InterruptedException e) {
-        logger.error("exception while waiting to close "+e);
+      while (!closed) {
+        try {
+          //wait until jxio closes the connection
+          wait(100);
+        } catch (InterruptedException e) {
+          logger.error("exception while waiting to close "+e);
+        }
       }
     }
+    logger.info(this +" Closed RdmaClient");
   }
 
   public void write(RdmaMessage req, RpcResponseCallback respCallbacks) {
@@ -333,6 +339,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   }
 
   public void reset() {
+    logger.info(this+" reset()");
     rpcCallbacks.clear();
     chunkCallbacks.clear();
     tasks.clear();
@@ -344,7 +351,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   }
 
   public boolean isConnected() {
-    return established && !close;
+    return established && !notifyClose && !sessionClosed;
   }
   
   private ChunkReceivedCallback retriveChunkCallback(long key) {

@@ -27,10 +27,9 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
   private ExecutorService executor;
   public SessionServerCallbacks callbacks;
   private ServerSession session;
-  // private List<Msg> workingMsgs;
   private Msg currentMsg = null;
   private ServerResponder responder;
-  private List<RdmaMessage> backlog;
+  private LinkedList<RdmaMessage> backlog;
   private ByteBuffer proccessedReq;
   private Message.Type proccessedReqType;
 
@@ -83,7 +82,7 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
         if (dataLength <= data.capacity()) {
           // msg fits in 1 buffer, no need to concatenate buffers
           RequestMessage decoded = decode(proccessedReqType, data);
-          //logger.info(this.session + " decoded, going to handle " + decoded);
+          logger.info(this.session + " short decoded, going to handle " + decoded);
           handle(decoded);
           return;
         } else {
@@ -100,7 +99,7 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
         // got all data, can decode
         RequestMessage decoded = decode(proccessedReqType, proccessedReq);
         proccessedReq = null;
-      //  logger.info(this.session + "msg= "+m+" decoded, going to handle " + decoded);
+        logger.info(this.session + " long msg= "+m+" decoded, going to handle " + decoded);
         handle(decoded);
       }
     }
@@ -137,27 +136,24 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
   
   @Override
   public void respond(Encodable result) {
-   // logger.info(this.session + " adding to backlog "+(Message) result);
+    logger.info(this.session + " adding to backlog "+(Message) result);
     backlog.add(new RdmaMessage((Message) result, 0));
     encodeAndSend();
   }
 
   private void encodeAndSend() {
-    try {
-      RdmaMessage rdmaMsg = backlog.get(0);
+    RdmaMessage rdmaMsg = backlog.peek();
+    if (rdmaMsg != null) { 
       List<Msg> msgsToSend = rdmaMsg.encode(this);
-    //  logger.info(this.session + " encodeAndSend encoded="+msgsToSend+" msg="+rdmaMsg);
       // always will include only one msg since we are replaying to each msg
       // immediately, and not accumulating them
       assert msgsToSend.size() == 1;
       if (rdmaMsg.encodedFully) {
-        backlog.remove(rdmaMsg);
+        backlog.poll();
       }
       responder.respond(session, msgsToSend.get(0));
-    } catch (IndexOutOfBoundsException e) {
-      // nothing to send, return empty
+    } else {
       responder.respond(session, currentMsg);
-      return;
     }
   }
 

@@ -89,6 +89,10 @@ final class RdmaBlockTransferService(conf: SparkConf, securityManager: SecurityM
     }
   }
 
+  override def hostName: String = Utils.localHostName()
+
+  override def port: Int = rdmaServer.getPort()
+
   override def uploadBlock(
     hostname: String,
     port: Int,
@@ -131,13 +135,5 @@ final class RdmaBlockTransferService(conf: SparkConf, securityManager: SecurityM
   override def close(): Unit = {
     rdmaServer.close()
     clientFactory.close()
-  }
-
-  override def port: Int = {
-    rdmaServer.getPort()
-  }
-
-  override def hostName: String = {
-    Utils.localHostName()
   }
 }

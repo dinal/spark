@@ -37,7 +37,7 @@ import org.slf4j.LoggerFactory;
 
 public class RdmaTransportServer implements Runnable, TransportServer, ServerResponder {
   private final Logger logger = LoggerFactory.getLogger(RdmaTransportServer.class);
-  public static final int SERVER_BUFFER_SIZE = Constants.MSGPOOL_BUF_SIZE / 2;
+  public static final int SERVER_BUFFER_SIZE = Constants.MSGPOOL_BUF_SIZE;
   private static final int SERVER_INITIAL_BUFFER = 500;
   private static final int SERVER_INC_BUFFER = 50;
   private Thread mListenerThread;
@@ -48,7 +48,7 @@ public class RdmaTransportServer implements Runnable, TransportServer, ServerRes
   private int executorNextIndex = 0;
   private RdmaTransportContext context;
   private HashMap<ServerSession, List<Msg>> responses = new HashMap<ServerSession, List<Msg>>();
-  private static final int BATCH_RESPONSE = 1;
+  private static final int BATCH_RESPONSE = 5;
   private boolean stop;
 
   public RdmaTransportServer(RdmaTransportContext context, InetSocketAddress address) {
@@ -106,7 +106,7 @@ public class RdmaTransportServer implements Runnable, TransportServer, ServerRes
         for (Entry<ServerSession, List<Msg>> entry : responses.entrySet()) {
           for (Msg m : entry.getValue()) {
             try {
-             // logger.info("send on session: "+entry.getKey()+" msg: "+m);
+              logger.info("send on session: "+entry.getKey()+" msg: "+m);
               entry.getKey().sendResponse(m);
               //logger.info(this+" sending on session="+entry.getKey()+" msg="+entry.getValue());
             } catch (Exception e) {
@@ -123,6 +123,7 @@ public class RdmaTransportServer implements Runnable, TransportServer, ServerRes
       mp.deleteMsgPool();
     }
     mMsgPools.clear();
+    logger.info("Server stopped");
   }
 
   @Override
