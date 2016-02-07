@@ -17,6 +17,8 @@
 
 package org.apache.spark.network.protocol;
 
+import java.nio.ByteBuffer;
+
 import com.google.common.base.Objects;
 import io.netty.buffer.ByteBuf;
 
@@ -43,9 +45,21 @@ public final class RpcFailure extends AbstractMessage implements ResponseMessage
     buf.writeLong(requestId);
     Encoders.Strings.encode(buf, errorString);
   }
+  
+  @Override
+  public void encode(ByteBuffer buf) {
+    buf.putLong(requestId);
+    Encoders.Strings.encode(buf, errorString);
+  }
 
   public static RpcFailure decode(ByteBuf buf) {
     long requestId = buf.readLong();
+    String errorString = Encoders.Strings.decode(buf);
+    return new RpcFailure(requestId, errorString);
+  }
+
+  public static RpcFailure decode(ByteBuffer buf) {
+    long requestId = buf.getLong();
     String errorString = Encoders.Strings.decode(buf);
     return new RpcFailure(requestId, errorString);
   }

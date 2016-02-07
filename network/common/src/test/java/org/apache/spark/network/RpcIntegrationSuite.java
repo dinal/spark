@@ -79,7 +79,8 @@ public class RpcIntegrationSuite {
       @Override
       public StreamManager getStreamManager() { return new OneForOneStreamManager(); }
     };
-    TransportContext context = new TransportContext(conf, rpcHandler);
+    TransportContext context = TransportContext.ContextFactory.createTransportContext(
+        conf, rpcHandler);
     server = context.createServer();
     clientFactory = context.createClientFactory();
     oneWayMsgs = new ArrayList<>();
@@ -87,8 +88,12 @@ public class RpcIntegrationSuite {
 
   @AfterClass
   public static void tearDown() {
-    server.close();
-    clientFactory.close();
+    try {
+      server.close();
+      clientFactory.close();
+    } catch (Exception e) {
+
+    }
   }
 
   class RpcResult {

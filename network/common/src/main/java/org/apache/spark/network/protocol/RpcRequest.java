@@ -17,12 +17,17 @@
 
 package org.apache.spark.network.protocol;
 
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+
 import com.google.common.base.Objects;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 
 import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.buffer.NettyManagedBuffer;
+import org.apache.spark.network.buffer.NioManagedBuffer;
 
 /**
  * A generic RPC which is handled by a remote {@link org.apache.spark.network.server.RpcHandler}.
@@ -56,11 +61,25 @@ public final class RpcRequest extends AbstractMessage implements RequestMessage 
     buf.writeInt((int) body().size());
   }
 
+  @Override
+  public void encode(ByteBuffer buf) {
+    buf.putLong(requestId);
+    // See comment in encodedLength().
+    buf.putInt((int) body().size());
+  }
+
   public static RpcRequest decode(ByteBuf buf) {
     long requestId = buf.readLong();
     // See comment in encodedLength().
     buf.readInt();
     return new RpcRequest(requestId, new NettyManagedBuffer(buf.retain()));
+  }
+
+  public static RpcRequest decode(ByteBuffer buf) {
+    long requestId = buf.getLong();
+    // See comment in encodedLength().
+    buf.getInt();
+    return new RpcRequest(requestId, new NioManagedBuffer(buf));
   }
 
   @Override

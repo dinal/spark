@@ -21,11 +21,13 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.apache.spark.network.client.TransportClient;
 import org.apache.spark.network.client.TransportResponseHandler;
+import org.apache.spark.network.netty.NettyTransportClient;
+import org.apache.spark.network.netty.NettyTransportRequestHandler;
 import org.apache.spark.network.protocol.Message;
 import org.apache.spark.network.protocol.RequestMessage;
 import org.apache.spark.network.protocol.ResponseMessage;
@@ -51,16 +53,16 @@ import org.apache.spark.network.util.NettyUtils;
 public class TransportChannelHandler extends SimpleChannelInboundHandler<Message> {
   private final Logger logger = LoggerFactory.getLogger(TransportChannelHandler.class);
 
-  private final TransportClient client;
+  private final NettyTransportClient client;
   private final TransportResponseHandler responseHandler;
-  private final TransportRequestHandler requestHandler;
+  private final NettyTransportRequestHandler requestHandler;
   private final long requestTimeoutNs;
   private final boolean closeIdleConnections;
 
   public TransportChannelHandler(
-      TransportClient client,
+      NettyTransportClient client,
       TransportResponseHandler responseHandler,
-      TransportRequestHandler requestHandler,
+      NettyTransportRequestHandler requestHandler,
       long requestTimeoutMs,
       boolean closeIdleConnections) {
     this.client = client;
@@ -70,7 +72,7 @@ public class TransportChannelHandler extends SimpleChannelInboundHandler<Message
     this.closeIdleConnections = closeIdleConnections;
   }
 
-  public TransportClient getClient() {
+  public NettyTransportClient getClient() {
     return client;
   }
 

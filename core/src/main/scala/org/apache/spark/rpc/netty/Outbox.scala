@@ -25,11 +25,12 @@ import scala.util.control.NonFatal
 
 import org.apache.spark.{Logging, SparkException}
 import org.apache.spark.network.client.{RpcResponseCallback, TransportClient}
+import org.apache.spark.network.netty.NettyTransportClient
 import org.apache.spark.rpc.RpcAddress
 
 private[netty] sealed trait OutboxMessage {
 
-  def sendWith(client: TransportClient): Unit
+  def sendWith(client: NettyTransportClient): Unit
 
   def onFailure(e: Throwable): Unit
 
@@ -38,7 +39,7 @@ private[netty] sealed trait OutboxMessage {
 private[netty] case class OneWayOutboxMessage(content: ByteBuffer) extends OutboxMessage
   with Logging {
 
-  override def sendWith(client: TransportClient): Unit = {
+  override def sendWith(client: NettyTransportClient): Unit = {
     client.send(content)
   }
 
@@ -51,13 +52,13 @@ private[netty] case class OneWayOutboxMessage(content: ByteBuffer) extends Outbo
 private[netty] case class RpcOutboxMessage(
     content: ByteBuffer,
     _onFailure: (Throwable) => Unit,
-    _onSuccess: (TransportClient, ByteBuffer) => Unit)
+    _onSuccess: (NettyTransportClient, ByteBuffer) => Unit)
   extends OutboxMessage with RpcResponseCallback {
 
-  private var client: TransportClient = _
+  private var client: NettyTransportClient = _
   private var requestId: Long = _
 
-  override def sendWith(client: TransportClient): Unit = {
+  override def sendWith(client: NettyTransportClient): Unit = {
     this.client = client
     this.requestId = client.sendRpc(content, this)
   }
@@ -85,7 +86,7 @@ private[netty] class Outbox(nettyEnv: NettyRpcEnv, val address: RpcAddress) {
   private val messages = new java.util.LinkedList[OutboxMessage]
 
   @GuardedBy("this")
-  private var client: TransportClient = null
+  private var client: NettyTransportClient = null
 
   /**
    * connectFuture points to the connect task. If there is no connect task, connectFuture will be

@@ -17,11 +17,13 @@
 
 package org.apache.spark.network.shuffle.protocol;
 
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Objects;
+
 import io.netty.buffer.ByteBuf;
 
 import org.apache.spark.network.protocol.Encodable;
@@ -82,6 +84,13 @@ public class ExecutorShuffleInfo implements Encodable {
   public void encode(ByteBuf buf) {
     Encoders.StringArrays.encode(buf, localDirs);
     buf.writeInt(subDirsPerLocalDir);
+    Encoders.Strings.encode(buf, shuffleManager);
+  }
+  
+  @Override
+  public void encode(ByteBuffer buf) {
+    Encoders.StringArrays.encode(buf, localDirs);
+    buf.putInt(subDirsPerLocalDir);
     Encoders.Strings.encode(buf, shuffleManager);
   }
 

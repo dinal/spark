@@ -23,13 +23,14 @@ import java.util.List;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Lists;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.server.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.apache.spark.network.TransportContext;
+import org.apache.spark.network.netty.NettyTransportContext;
 import org.apache.spark.network.sasl.SaslServerBootstrap;
 import org.apache.spark.network.sasl.ShuffleSecretManager;
 import org.apache.spark.network.server.TransportServer;
@@ -130,16 +131,17 @@ public class YarnShuffleService extends AuxiliaryService {
       logger.error("Failed to initialize external shuffle service", e);
     }
 
-    List<TransportServerBootstrap> bootstraps = Lists.newArrayList();
-    if (authEnabled) {
-      secretManager = new ShuffleSecretManager();
-      bootstraps.add(new SaslServerBootstrap(transportConf, secretManager));
-    }
-
     int port = conf.getInt(
       SPARK_SHUFFLE_SERVICE_PORT_KEY, DEFAULT_SPARK_SHUFFLE_SERVICE_PORT);
-    TransportContext transportContext = new TransportContext(transportConf, blockHandler);
-    shuffleServer = transportContext.createServer(port, bootstraps);
+
+    if (authEnabled) {
+	  List<TransportServerBootstrap> bootstraps = Lists.newArrayList();
+      secretManager = new ShuffleSecretManager();
+      bootstraps.add(new SaslServerBootstrap(transportConf, secretManager));
+	  shuffleServer = new NettyTransportContext(transportConf, blockHandler).createServer(port, bootstraps);
+    } else {
+		shuffleServer = TransportContext.ContextFactory.createTransportContext(transportConf, blockHandler).createServer(port);
+    }
     // the port should normally be fixed, but for tests its useful to find an open port
     port = shuffleServer.getPort();
     boundPort = port;

@@ -23,6 +23,7 @@ import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.google.common.collect.Lists;
+
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -35,6 +36,8 @@ import org.apache.spark.network.TestUtils;
 import org.apache.spark.network.TransportContext;
 import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.client.ChunkReceivedCallback;
+import org.apache.spark.network.netty.NettyTransportContext;
+import org.apache.spark.network.netty.NettyTransportServer;
 import org.apache.spark.network.client.RpcResponseCallback;
 import org.apache.spark.network.client.TransportClient;
 import org.apache.spark.network.client.TransportClientBootstrap;
@@ -65,7 +68,7 @@ public class SaslIntegrationSuite {
 
   static TransportServer server;
   static TransportConf conf;
-  static TransportContext context;
+  static NettyTransportContext context;
   static SecretKeyHolder secretKeyHolder;
 
   TransportClientFactory clientFactory;
@@ -73,7 +76,7 @@ public class SaslIntegrationSuite {
   @BeforeClass
   public static void beforeAll() throws IOException {
     conf = new TransportConf("shuffle", new SystemPropertyConfigProvider());
-    context = new TransportContext(conf, new TestRpcHandler());
+    context = new NettyTransportContext(conf, new TestRpcHandler());
 
     secretKeyHolder = mock(SecretKeyHolder.class);
     when(secretKeyHolder.getSaslUser(eq("app-1"))).thenReturn("app-1");
@@ -90,13 +93,17 @@ public class SaslIntegrationSuite {
 
   @AfterClass
   public static void afterAll() {
-    server.close();
+    try {  
+      server.close();
+    } catch (Exception e) {}
   }
 
   @After
   public void afterEach() {
     if (clientFactory != null) {
-      clientFactory.close();
+      try {
+        clientFactory.close();
+      } catch (Exception e) {}
       clientFactory = null;
     }
   }
@@ -156,7 +163,7 @@ public class SaslIntegrationSuite {
   @Test
   public void testNoSaslServer() {
     RpcHandler handler = new TestRpcHandler();
-    TransportContext context = new TransportContext(conf, handler);
+    NettyTransportContext context = new NettyTransportContext(conf, handler);
     clientFactory = context.createClientFactory(
       Lists.<TransportClientBootstrap>newArrayList(
         new SaslClientBootstrap(conf, "app-1", secretKeyHolder)));
@@ -166,7 +173,9 @@ public class SaslIntegrationSuite {
     } catch (Exception e) {
       assertTrue(e.getMessage(), e.getMessage().contains("Digest-challenge format violation"));
     } finally {
-      server.close();
+      try {
+    	  server.close();
+    	} catch (IOException ex) {}
     }
   }
 
@@ -181,8 +190,8 @@ public class SaslIntegrationSuite {
     ExternalShuffleBlockHandler blockHandler = new ExternalShuffleBlockHandler(
       new OneForOneStreamManager(), blockResolver);
     TransportServerBootstrap bootstrap = new SaslServerBootstrap(conf, secretKeyHolder);
-    TransportContext blockServerContext = new TransportContext(conf, blockHandler);
-    TransportServer blockServer = blockServerContext.createServer(Arrays.asList(bootstrap));
+    NettyTransportContext blockServerContext = new NettyTransportContext(conf, blockHandler);
+    NettyTransportServer blockServer = blockServerContext.createServer(Arrays.asList(bootstrap));
 
     TransportClient client1 = null;
     TransportClient client2 = null;

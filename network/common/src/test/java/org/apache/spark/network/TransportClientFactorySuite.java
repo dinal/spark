@@ -54,7 +54,7 @@ public class TransportClientFactorySuite {
   public void setUp() {
     conf = new TransportConf("shuffle", new SystemPropertyConfigProvider());
     RpcHandler rpcHandler = new NoOpRpcHandler();
-    context = new TransportContext(conf, rpcHandler);
+    context = TransportContext.ContextFactory.createTransportContext(conf, rpcHandler);
     server1 = context.createServer();
     server2 = context.createServer();
   }
@@ -79,7 +79,8 @@ public class TransportClientFactorySuite {
     TransportConf conf = new TransportConf("shuffle", new MapConfigProvider(configMap));
 
     RpcHandler rpcHandler = new NoOpRpcHandler();
-    TransportContext context = new TransportContext(conf, rpcHandler);
+    TransportContext context = TransportContext.ContextFactory.createTransportContext(
+        conf, rpcHandler);
     final TransportClientFactory factory = context.createClientFactory();
     final Set<TransportClient> clients = Collections.synchronizedSet(
       new HashSet<TransportClient>());
@@ -197,7 +198,7 @@ public class TransportClientFactorySuite {
         return value;
       }
     });
-    TransportContext context = new TransportContext(conf, new NoOpRpcHandler(), true);
+    TransportContext context = TransportContext.ContextFactory.createTransportContext(conf, new NoOpRpcHandler(), true);
     TransportClientFactory factory = context.createClientFactory();
     try {
       TransportClient c1 = factory.createClient(TestUtils.getLocalHost(), server1.getPort());

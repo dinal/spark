@@ -17,12 +17,15 @@
 
 package org.apache.spark.network.protocol;
 
+import java.nio.ByteBuffer;
+
 import com.google.common.base.Objects;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 
 import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.buffer.NettyManagedBuffer;
+import org.apache.spark.network.buffer.NioManagedBuffer;
 
 /** Response to {@link RpcRequest} for a successful RPC. */
 public final class RpcResponse extends AbstractResponseMessage {
@@ -52,6 +55,13 @@ public final class RpcResponse extends AbstractResponseMessage {
   }
 
   @Override
+  public void encode(ByteBuffer buf) {
+    buf.putLong(requestId);
+    // See comment in encodedLength().
+    buf.putInt((int) body().size());
+  }
+
+  @Override
   public ResponseMessage createFailureResponse(String error) {
     return new RpcFailure(requestId, error);
   }
@@ -61,6 +71,13 @@ public final class RpcResponse extends AbstractResponseMessage {
     // See comment in encodedLength().
     buf.readInt();
     return new RpcResponse(requestId, new NettyManagedBuffer(buf.retain()));
+  }
+
+  public static RpcResponse decode(ByteBuffer buf) {
+    long requestId = buf.getLong();
+    // See comment in encodedLength().
+    buf.getInt();
+    return new RpcResponse(requestId, new NioManagedBuffer(buf.duplicate()));
   }
 
   @Override

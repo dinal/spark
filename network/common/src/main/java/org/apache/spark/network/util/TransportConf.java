@@ -60,6 +60,10 @@ public class TransportConf {
     SPARK_NETWORK_IO_LAZYFD_KEY = getConfKey("io.lazyFD");
   }
 
+  public String getConfModule() {
+    return module;
+  }
+
   private String getConfKey(String suffix) {
     return "spark." + module + "." + suffix;
   }
@@ -163,6 +167,10 @@ public class TransportConf {
    */
   public boolean saslServerAlwaysEncrypt() {
     return conf.getBoolean("spark.network.sasl.serverAlwaysEncrypt", false);
+  }
+
+  public String networkType() {
+    return conf.get("spark.shuffle.network.type", "netty");
   }
 
 }

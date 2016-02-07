@@ -29,23 +29,27 @@ import java.util.Random;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.io.IOException;
+
 import javax.security.sasl.SaslException;
 
 import com.google.common.collect.Lists;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.Files;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
+
 import org.junit.Test;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
-
 import org.apache.spark.network.TestUtils;
-import org.apache.spark.network.TransportContext;
+import org.apache.spark.network.netty.NettyTransportClient;
+import org.apache.spark.network.netty.NettyTransportContext;
 import org.apache.spark.network.buffer.FileSegmentManagedBuffer;
 import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.client.ChunkReceivedCallback;
@@ -398,7 +402,7 @@ public class SparkSaslSuite {
       when(keyHolder.getSaslUser(anyString())).thenReturn("user");
       when(keyHolder.getSecretKey(anyString())).thenReturn("secret");
 
-      TransportContext ctx = new TransportContext(conf, rpcHandler);
+      NettyTransportContext ctx = new NettyTransportContext(conf, rpcHandler);
 
       this.checker = new EncryptionCheckerBootstrap();
       this.server = ctx.createServer(Arrays.asList(new SaslServerBootstrap(conf, keyHolder),
@@ -426,11 +430,14 @@ public class SparkSaslSuite {
       if (!disableClientEncryption) {
         assertEquals(encrypt, checker.foundEncryptionHandler);
       }
-      if (client != null) {
-        client.close();
-      }
-      if (server != null) {
-        server.close();
+      try {
+	      if (client != null) {
+	        client.close();
+	      }
+	      if (server != null) {
+	        server.close();
+	      }
+      } catch (IOException ex) {
       }
     }
 
@@ -467,7 +474,7 @@ public class SparkSaslSuite {
   private static class EncryptionDisablerBootstrap implements TransportClientBootstrap {
 
     @Override
-    public void doBootstrap(TransportClient client, Channel channel) {
+    public void doBootstrap(NettyTransportClient client, Channel channel) {
       channel.pipeline().remove(SaslEncryption.ENCRYPTION_HANDLER_NAME);
     }
 

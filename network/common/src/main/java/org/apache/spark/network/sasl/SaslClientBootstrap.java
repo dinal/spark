@@ -28,7 +28,7 @@ import io.netty.channel.Channel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.spark.network.client.TransportClient;
+import org.apache.spark.network.netty.NettyTransportClient;
 import org.apache.spark.network.client.TransportClientBootstrap;
 import org.apache.spark.network.util.JavaUtils;
 import org.apache.spark.network.util.TransportConf;
@@ -66,7 +66,7 @@ public class SaslClientBootstrap implements TransportClientBootstrap {
    * due to mismatch.
    */
   @Override
-  public void doBootstrap(TransportClient client, Channel channel) {
+  public void doBootstrap(NettyTransportClient client, Channel channel) {
     SparkSaslClient saslClient = new SparkSaslClient(appId, secretKeyHolder, encrypt);
     try {
       byte[] payload = saslClient.firstToken();

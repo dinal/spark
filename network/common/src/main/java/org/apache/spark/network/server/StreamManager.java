@@ -19,6 +19,7 @@ package org.apache.spark.network.server;
 
 import io.netty.channel.Channel;
 
+import org.accelio.jxio.ServerSession;
 import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.client.TransportClient;
 
@@ -68,12 +69,14 @@ public abstract class StreamManager {
    * times with the same channel and stream id.
    */
   public void registerChannel(Channel channel, long streamId) { }
+  public void registerSession(ServerSession session, long streamId) { }
 
   /**
    * Indicates that the given channel has been terminated. After this occurs, we are guaranteed not
    * to read from the associated streams again, so any state can be cleaned up.
    */
-  public void connectionTerminated(Channel channel) { }
+  public void connectionChannelTerminated(Channel channel) { }
+  public void connectionSessionTerminated(ServerSession session) { }
 
   /**
    * Verify that the client is authorized to read from the given stream.

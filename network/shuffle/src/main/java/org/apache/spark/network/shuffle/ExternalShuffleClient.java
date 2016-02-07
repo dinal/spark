@@ -30,6 +30,7 @@ import org.apache.spark.network.TransportContext;
 import org.apache.spark.network.client.TransportClient;
 import org.apache.spark.network.client.TransportClientBootstrap;
 import org.apache.spark.network.client.TransportClientFactory;
+import org.apache.spark.network.netty.NettyTransportContext;
 import org.apache.spark.network.sasl.SaslClientBootstrap;
 import org.apache.spark.network.sasl.SecretKeyHolder;
 import org.apache.spark.network.server.NoOpRpcHandler;
@@ -79,12 +80,17 @@ public class ExternalShuffleClient extends ShuffleClient {
   @Override
   public void init(String appId) {
     this.appId = appId;
-    TransportContext context = new TransportContext(conf, new NoOpRpcHandler(), true);
-    List<TransportClientBootstrap> bootstraps = Lists.newArrayList();
-    if (saslEnabled) {
-      bootstraps.add(new SaslClientBootstrap(conf, appId, secretKeyHolder, saslEncryptionEnabled));
+    TransportContext context = TransportContext.ContextFactory.createTransportContext(
+        conf, new NoOpRpcHandler(), true);
+    if (context instanceof NettyTransportContext) {
+      List<TransportClientBootstrap> bootstraps = Lists.newArrayList();
+      if (saslEnabled) {
+        bootstraps.add(new SaslClientBootstrap(conf, appId, secretKeyHolder, saslEncryptionEnabled));
+      }
+      clientFactory = ((NettyTransportContext) context).createClientFactory(bootstraps);
+    } else {
+      clientFactory = context.createClientFactory();
     }
-    clientFactory = context.createClientFactory(bootstraps);
   }
 
   @Override
@@ -149,6 +155,8 @@ public class ExternalShuffleClient extends ShuffleClient {
 
   @Override
   public void close() {
-    clientFactory.close();
+    try {
+      clientFactory.close();
+    } catch(IOException e) {}
   }
 }

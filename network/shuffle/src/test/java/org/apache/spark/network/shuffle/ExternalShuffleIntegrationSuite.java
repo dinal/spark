@@ -93,7 +93,7 @@ public class ExternalShuffleIntegrationSuite {
 
     conf = new TransportConf("shuffle", new SystemPropertyConfigProvider());
     handler = new ExternalShuffleBlockHandler(conf, null);
-    TransportContext transportContext = new TransportContext(conf, handler);
+    TransportContext transportContext = TransportContext.ContextFactory.createTransportContext(conf, handler);
     server = transportContext.createServer();
   }
 
@@ -101,7 +101,9 @@ public class ExternalShuffleIntegrationSuite {
   public static void afterAll() {
     dataContext0.cleanup();
     dataContext1.cleanup();
-    server.close();
+    try {
+      server.close();
+    } catch (Exception e) {}
   }
 
   @After

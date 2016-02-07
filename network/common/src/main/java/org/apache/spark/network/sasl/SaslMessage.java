@@ -19,7 +19,7 @@ package org.apache.spark.network.sasl;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-
+import java.nio.ByteBuffer;
 import org.apache.spark.network.buffer.NettyManagedBuffer;
 import org.apache.spark.network.protocol.Encoders;
 import org.apache.spark.network.protocol.AbstractMessage;
@@ -62,6 +62,14 @@ class SaslMessage extends AbstractMessage {
     Encoders.Strings.encode(buf, appId);
     // See comment in encodedLength().
     buf.writeInt((int) body().size());
+  }
+  
+  @Override
+  public void encode(ByteBuffer buf) {
+    buf.put(TAG_BYTE);
+    Encoders.Strings.encode(buf, appId);
+    // See comment in encodedLength().
+    buf.putInt((int) body().size());
   }
 
   public static SaslMessage decode(ByteBuf buf) {

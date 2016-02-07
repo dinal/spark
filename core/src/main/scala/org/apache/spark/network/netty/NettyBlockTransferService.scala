@@ -45,13 +45,13 @@ class NettyBlockTransferService(conf: SparkConf, securityManager: SecurityManage
   private val authEnabled = securityManager.isAuthenticationEnabled()
   private val transportConf = SparkTransportConf.fromSparkConf(conf, "shuffle", numCores)
 
-  private[this] var transportContext: TransportContext = _
+  private[this] var transportContext: NettyTransportContext = _
   private[this] var server: TransportServer = _
-  private[this] var clientFactory: TransportClientFactory = _
+  private[this] var clientFactory: NettyTransportClientFactory = _
   private[this] var appId: String = _
 
   override def init(blockDataManager: BlockDataManager): Unit = {
-    val rpcHandler = new NettyBlockRpcServer(conf.getAppId, serializer, blockDataManager)
+    val rpcHandler = new BlockRpcServer(conf.getAppId, serializer, blockDataManager)
     var serverBootstrap: Option[TransportServerBootstrap] = None
     var clientBootstrap: Option[TransportClientBootstrap] = None
     if (authEnabled) {
@@ -59,7 +59,7 @@ class NettyBlockTransferService(conf: SparkConf, securityManager: SecurityManage
       clientBootstrap = Some(new SaslClientBootstrap(transportConf, conf.getAppId, securityManager,
         securityManager.isSaslEncryptionEnabled()))
     }
-    transportContext = new TransportContext(transportConf, rpcHandler)
+    transportContext = new NettyTransportContext(transportConf, rpcHandler)
     clientFactory = transportContext.createClientFactory(clientBootstrap.toSeq.asJava)
     server = createServer(serverBootstrap.toList)
     appId = conf.getAppId
@@ -157,5 +157,6 @@ class NettyBlockTransferService(conf: SparkConf, securityManager: SecurityManage
     if (clientFactory != null) {
       clientFactory.close()
     }
+    logInfo(s"NettyBlockTransferService closed!")
   }
 }

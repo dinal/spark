@@ -32,6 +32,8 @@ import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.buffer.NioManagedBuffer;
 import org.apache.spark.network.client.RpcResponseCallback;
 import org.apache.spark.network.client.TransportClient;
+import org.apache.spark.network.netty.NettyTransportClient;
+import org.apache.spark.network.rdma.RdmaTransportClient;
 import org.apache.spark.network.server.OneForOneStreamManager;
 import org.apache.spark.network.server.RpcHandler;
 import org.apache.spark.network.shuffle.protocol.BlockTransferMessage;
@@ -40,16 +42,23 @@ import org.apache.spark.network.shuffle.protocol.OpenBlocks;
 import org.apache.spark.network.shuffle.protocol.RegisterExecutor;
 import org.apache.spark.network.shuffle.protocol.StreamHandle;
 import org.apache.spark.network.shuffle.protocol.UploadBlock;
+import org.apache.spark.network.util.SystemPropertyConfigProvider;
+import org.apache.spark.network.util.TransportConf;
 
 public class ExternalShuffleBlockHandlerSuite {
-  TransportClient client = mock(TransportClient.class);
-
+  TransportConf conf = new TransportConf("shuffle", new SystemPropertyConfigProvider());
   OneForOneStreamManager streamManager;
   ExternalShuffleBlockResolver blockResolver;
   RpcHandler handler;
+  TransportClient client;
 
   @Before
   public void beforeEach() {
+	if (conf.networkType().equals("rdma"))
+		client = mock(RdmaTransportClient.class);
+	else {
+		client = mock(NettyTransportClient.class);
+	}
     streamManager = mock(OneForOneStreamManager.class);
     blockResolver = mock(ExternalShuffleBlockResolver.class);
     handler = new ExternalShuffleBlockHandler(streamManager, blockResolver);

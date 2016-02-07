@@ -84,7 +84,7 @@ public class ExternalShuffleBlockHandler extends RpcHandler {
       for (String blockId : msg.blockIds) {
         blocks.add(blockManager.getBlockData(msg.appId, msg.execId, blockId));
       }
-      long streamId = streamManager.registerStream(client.getClientId(), blocks.iterator());
+      long streamId = streamManager.registerStream(msg.appId, blocks.iterator());
       logger.trace("Registered streamId {} with {} buffers", streamId, msg.blockIds.length);
       callback.onSuccess(new StreamHandle(streamId, msg.blockIds.length).toByteBuffer());
 
@@ -131,6 +131,7 @@ public class ExternalShuffleBlockHandler extends RpcHandler {
   }
 
   private void checkAuth(TransportClient client, String appId) {
+    if (client == null) return;
     if (client.getClientId() != null && !client.getClientId().equals(appId)) {
       throw new SecurityException(String.format(
         "Client for %s not authorized for application %s.", client.getClientId(), appId));

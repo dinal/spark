@@ -27,7 +27,7 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 import org.apache.spark.network.TestUtils;
-import org.apache.spark.network.TransportContext;
+import org.apache.spark.network.netty.NettyTransportContext;
 import org.apache.spark.network.sasl.SaslServerBootstrap;
 import org.apache.spark.network.sasl.SecretKeyHolder;
 import org.apache.spark.network.server.RpcHandler;
@@ -44,8 +44,8 @@ public class ExternalShuffleSecuritySuite {
 
   @Before
   public void beforeEach() throws IOException {
-    TransportContext context =
-      new TransportContext(conf, new ExternalShuffleBlockHandler(conf, null));
+    NettyTransportContext context =
+      new NettyTransportContext(conf, new ExternalShuffleBlockHandler(conf, null));
     TransportServerBootstrap bootstrap = new SaslServerBootstrap(conf,
         new TestSecretKeyHolder("my-app-id", "secret"));
     this.server = context.createServer(Arrays.asList(bootstrap));
@@ -53,10 +53,12 @@ public class ExternalShuffleSecuritySuite {
 
   @After
   public void afterEach() {
-    if (server != null) {
-      server.close();
-      server = null;
-    }
+  	try {
+      if (server != null) {
+        server.close();
+        server = null;
+      }
+  	} catch (IOException ex) {}
   }
 
   @Test

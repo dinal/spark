@@ -30,7 +30,11 @@ import org.apache.spark.network.server.StreamManager;
 import org.apache.spark.network.server.TransportServer;
 import org.apache.spark.network.util.MapConfigProvider;
 import org.apache.spark.network.util.TransportConf;
-import org.junit.*;
+import org.junit.Before;
+import org.junit.After;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import static org.junit.Assert.*;
 
 import java.io.IOException;
@@ -46,6 +50,7 @@ import java.util.concurrent.TimeUnit;
  * In this suite, we use 2 seconds as the connection timeout, with some slack given in the tests,
  * to ensure stability in different test environments.
  */
+@RunWith(Parameterized.class)
 public class RequestTimeoutIntegrationSuite {
 
   private TransportServer server;
@@ -56,11 +61,26 @@ public class RequestTimeoutIntegrationSuite {
 
   // A large timeout that "shouldn't happen", for the sake of faulty tests not hanging forever.
   private final int FOREVER = 60 * 1000;
+  
+  private String shuffleType;
+
+  @Parameterized.Parameters
+  public static Collection<Object[]> data() {
+    List<Object[]> list = new ArrayList<Object[]>();
+    list.add(new Object[] { "netty" });
+    list.add(new Object[] { "rdma" });
+    return list;
+  }
+  
+  public RequestTimeoutIntegrationSuite(String shuffle) {
+	  shuffleType = shuffle;
+  }
 
   @Before
   public void setUp() throws Exception {
     Map<String, String> configMap = Maps.newHashMap();
     configMap.put("spark.shuffle.io.connectionTimeout", "2s");
+    configMap.put("spark.shuffle.network.type", shuffleType);
     conf = new TransportConf("shuffle", new MapConfigProvider(configMap));
 
     defaultManager = new StreamManager() {
@@ -73,12 +93,15 @@ public class RequestTimeoutIntegrationSuite {
 
   @After
   public void tearDown() {
-    if (server != null) {
-      server.close();
-    }
-    if (clientFactory != null) {
-      clientFactory.close();
-    }
+	  try {
+	    if (server != null) {
+	      server.close();
+	    }
+	    if (clientFactory != null) {
+	      clientFactory.close();
+	    }
+	  } catch (IOException ex) {
+	  }
   }
 
   // Basic suite: First request completes quickly, and second waits for longer than network timeout.
@@ -106,7 +129,7 @@ public class RequestTimeoutIntegrationSuite {
       }
     };
 
-    TransportContext context = new TransportContext(conf, handler);
+    TransportContext context = TransportContext.ContextFactory.createTransportContext(conf, handler);
     server = context.createServer();
     clientFactory = context.createClientFactory();
     TransportClient client = clientFactory.createClient(TestUtils.getLocalHost(), server.getPort());
@@ -156,7 +179,7 @@ public class RequestTimeoutIntegrationSuite {
       }
     };
 
-    TransportContext context = new TransportContext(conf, handler);
+    TransportContext context = TransportContext.ContextFactory.createTransportContext(conf, handler);
     server = context.createServer();
     clientFactory = context.createClientFactory();
 
@@ -211,7 +234,7 @@ public class RequestTimeoutIntegrationSuite {
       }
     };
 
-    TransportContext context = new TransportContext(conf, handler);
+    TransportContext context = TransportContext.ContextFactory.createTransportContext(conf, handler);
     server = context.createServer();
     clientFactory = context.createClientFactory();
     TransportClient client = clientFactory.createClient(TestUtils.getLocalHost(), server.getPort());

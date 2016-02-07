@@ -17,6 +17,8 @@
 
 package org.apache.spark.network.protocol;
 
+import java.nio.ByteBuffer;
+
 import io.netty.buffer.ByteBuf;
 
 import org.apache.spark.network.buffer.ManagedBuffer;
@@ -51,9 +53,20 @@ public interface Message extends Encodable {
     @Override public int encodedLength() { return 1; }
 
     @Override public void encode(ByteBuf buf) { buf.writeByte(id); }
+    
+    public void encode(ByteBuffer buf) { buf.put(id); }
 
     public static Type decode(ByteBuf buf) {
       byte id = buf.readByte();
+      return getType(id);
+    }
+    
+    public static Type decode(ByteBuffer buf) {
+      byte id = buf.get();
+      return getType(id);
+    }
+    
+    public static Type getType(byte id) {
       switch (id) {
         case 0: return ChunkFetchRequest;
         case 1: return ChunkFetchSuccess;

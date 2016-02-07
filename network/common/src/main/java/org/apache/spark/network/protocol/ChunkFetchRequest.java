@@ -16,6 +16,7 @@
  */
 
 package org.apache.spark.network.protocol;
+import java.nio.ByteBuffer;
 
 import com.google.common.base.Objects;
 import io.netty.buffer.ByteBuf;
@@ -43,8 +44,17 @@ public final class ChunkFetchRequest extends AbstractMessage implements RequestM
   public void encode(ByteBuf buf) {
     streamChunkId.encode(buf);
   }
+  
+  @Override
+  public void encode(ByteBuffer buf) {
+    streamChunkId.encode(buf);
+  }
 
   public static ChunkFetchRequest decode(ByteBuf buf) {
+    return new ChunkFetchRequest(StreamChunkId.decode(buf));
+  }
+  
+  public static ChunkFetchRequest decode(ByteBuffer buf) {
     return new ChunkFetchRequest(StreamChunkId.decode(buf));
   }
 

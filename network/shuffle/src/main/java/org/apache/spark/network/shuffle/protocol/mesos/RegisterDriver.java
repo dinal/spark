@@ -17,11 +17,15 @@
 
 package org.apache.spark.network.shuffle.protocol.mesos;
 
+import java.nio.ByteBuffer;
+
 import com.google.common.base.Objects;
+
 import io.netty.buffer.ByteBuf;
 
 import org.apache.spark.network.protocol.Encoders;
 import org.apache.spark.network.shuffle.protocol.BlockTransferMessage;
+
 
 // Needed by ScalaDoc. See SPARK-7726
 import static org.apache.spark.network.shuffle.protocol.BlockTransferMessage.Type;
@@ -48,6 +52,11 @@ public class RegisterDriver extends BlockTransferMessage {
 
   @Override
   public void encode(ByteBuf buf) {
+    Encoders.Strings.encode(buf, appId);
+  }
+  
+  @Override
+  public void encode(ByteBuffer buf) {
     Encoders.Strings.encode(buf, appId);
   }
 

@@ -136,10 +136,12 @@ private[broadcast] object HttpBroadcast extends Logging {
   }
 
   def stop() {
+    logInfo("Stopping HttpBroadcast")
     synchronized {
       if (server != null) {
         server.stop()
         server = null
+        logInfo("Stopped HttpBroadcast")
       }
       if (cleaner != null) {
         cleaner.cancel()

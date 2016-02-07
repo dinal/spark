@@ -128,21 +128,23 @@ public class StreamSuite {
         return streamManager;
       }
     };
-    TransportContext context = new TransportContext(conf, handler);
+    TransportContext context = TransportContext.ContextFactory.createTransportContext(conf, handler);
     server = context.createServer();
     clientFactory = context.createClientFactory();
   }
 
   @AfterClass
   public static void tearDown() {
-    server.close();
-    clientFactory.close();
-    if (tempDir != null) {
-      for (File f : tempDir.listFiles()) {
-        f.delete();
+    try {
+      server.close();
+      clientFactory.close();
+      if (tempDir != null) {
+        for (File f : tempDir.listFiles()) {
+          f.delete();
+        }
+        tempDir.delete();
       }
-      tempDir.delete();
-    }
+    } catch(IOException e){}
   }
 
   @Test

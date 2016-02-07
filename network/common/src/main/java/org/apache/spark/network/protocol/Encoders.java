@@ -18,6 +18,8 @@
 package org.apache.spark.network.protocol;
 
 
+import java.nio.ByteBuffer;
+
 import com.google.common.base.Charsets;
 import io.netty.buffer.ByteBuf;
 
@@ -35,11 +37,24 @@ public class Encoders {
       buf.writeInt(bytes.length);
       buf.writeBytes(bytes);
     }
+    
+    public static void encode(ByteBuffer buf, String s) {
+      byte[] bytes = s.getBytes(Charsets.UTF_8);
+      buf.putInt(bytes.length);
+      buf.put(bytes);
+    }
 
     public static String decode(ByteBuf buf) {
       int length = buf.readInt();
       byte[] bytes = new byte[length];
       buf.readBytes(bytes);
+      return new String(bytes, Charsets.UTF_8);
+    }
+    
+    public static String decode(ByteBuffer buf) {
+      int length = buf.getInt();
+      byte[] bytes = new byte[length];
+      buf.get(bytes);
       return new String(bytes, Charsets.UTF_8);
     }
   }
@@ -54,11 +69,23 @@ public class Encoders {
       buf.writeInt(arr.length);
       buf.writeBytes(arr);
     }
+    
+    public static void encode(ByteBuffer buf, byte[] arr) {
+      buf.putInt(arr.length);
+      buf.put(arr);
+    }
 
     public static byte[] decode(ByteBuf buf) {
       int length = buf.readInt();
       byte[] bytes = new byte[length];
       buf.readBytes(bytes);
+      return bytes;
+    }
+    
+    public static byte[] decode(ByteBuffer buf) {
+      int length = buf.getInt();
+      byte[] bytes = new byte[length];
+      buf.get(bytes);
       return bytes;
     }
   }
@@ -79,9 +106,25 @@ public class Encoders {
         Strings.encode(buf, s);
       }
     }
+    
+    public static void encode(ByteBuffer buf, String[] strings) {
+      buf.putInt(strings.length);
+      for (String s : strings) {
+        Strings.encode(buf, s);
+      }
+    }
 
     public static String[] decode(ByteBuf buf) {
       int numStrings = buf.readInt();
+      String[] strings = new String[numStrings];
+      for (int i = 0; i < strings.length; i ++) {
+        strings[i] = Strings.decode(buf);
+      }
+      return strings;
+    }
+    
+    public static String[] decode(ByteBuffer buf) {
+      int numStrings = buf.getInt();
       String[] strings = new String[numStrings];
       for (int i = 0; i < strings.length; i ++) {
         strings[i] = Strings.decode(buf);

@@ -17,6 +17,8 @@
 
 package org.apache.spark.network.protocol;
 
+import java.nio.ByteBuffer;
+
 import com.google.common.base.Objects;
 import io.netty.buffer.ByteBuf;
 
@@ -45,8 +47,20 @@ public final class ChunkFetchFailure extends AbstractMessage implements Response
     streamChunkId.encode(buf);
     Encoders.Strings.encode(buf, errorString);
   }
+  
+  @Override
+  public void encode(ByteBuffer buf) {
+    streamChunkId.encode(buf);
+    Encoders.Strings.encode(buf, errorString);
+  }
 
   public static ChunkFetchFailure decode(ByteBuf buf) {
+    StreamChunkId streamChunkId = StreamChunkId.decode(buf);
+    String errorString = Encoders.Strings.decode(buf);
+    return new ChunkFetchFailure(streamChunkId, errorString);
+  }
+
+  public static ChunkFetchFailure decode(ByteBuffer buf) {
     StreamChunkId streamChunkId = StreamChunkId.decode(buf);
     String errorString = Encoders.Strings.decode(buf);
     return new ChunkFetchFailure(streamChunkId, errorString);

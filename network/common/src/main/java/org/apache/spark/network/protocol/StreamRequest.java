@@ -17,7 +17,10 @@
 
 package org.apache.spark.network.protocol;
 
+import java.nio.ByteBuffer;
+
 import com.google.common.base.Objects;
+
 import io.netty.buffer.ByteBuf;
 
 import org.apache.spark.network.buffer.ManagedBuffer;
@@ -46,6 +49,11 @@ public final class StreamRequest extends AbstractMessage implements RequestMessa
 
   @Override
   public void encode(ByteBuf buf) {
+    Encoders.Strings.encode(buf, streamId);
+  }
+  
+  @Override
+  public void encode(ByteBuffer buf) {
     Encoders.Strings.encode(buf, streamId);
   }
 

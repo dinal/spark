@@ -49,11 +49,13 @@ private[spark] class HttpFileServer(
   }
 
   def stop() {
+    logInfo("Stopping HttpFileServer")
     httpServer.stop()
-
+    logInfo("Stopped HttpFileServer")
     // If we only stop sc, but the driver process still run as a services then we need to delete
     // the tmp dir, if not, it will create too many tmp dirs
     try {
+      logInfo("Deleting dirs")
       Utils.deleteRecursively(baseDir)
     } catch {
       case e: Exception =>

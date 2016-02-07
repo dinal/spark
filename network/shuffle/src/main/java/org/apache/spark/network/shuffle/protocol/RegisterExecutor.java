@@ -17,10 +17,14 @@
 
 package org.apache.spark.network.shuffle.protocol;
 
+import java.nio.ByteBuffer;
+
 import com.google.common.base.Objects;
+
 import io.netty.buffer.ByteBuf;
 
 import org.apache.spark.network.protocol.Encoders;
+
 
 // Needed by ScalaDoc. See SPARK-7726
 import static org.apache.spark.network.shuffle.protocol.BlockTransferMessage.Type;
@@ -80,6 +84,13 @@ public class RegisterExecutor extends BlockTransferMessage {
 
   @Override
   public void encode(ByteBuf buf) {
+    Encoders.Strings.encode(buf, appId);
+    Encoders.Strings.encode(buf, execId);
+    executorInfo.encode(buf);
+  }
+  
+  @Override
+  public void encode(ByteBuffer buf) {
     Encoders.Strings.encode(buf, appId);
     Encoders.Strings.encode(buf, execId);
     executorInfo.encode(buf);

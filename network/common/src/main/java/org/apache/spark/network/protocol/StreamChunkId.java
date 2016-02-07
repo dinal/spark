@@ -16,6 +16,7 @@
  */
 
 package org.apache.spark.network.protocol;
+import java.nio.ByteBuffer;
 
 import com.google.common.base.Objects;
 import io.netty.buffer.ByteBuf;
@@ -41,11 +42,23 @@ public final class StreamChunkId implements Encodable {
     buffer.writeLong(streamId);
     buffer.writeInt(chunkIndex);
   }
+  
+  public void encode(ByteBuffer buffer) {
+    buffer.putLong(streamId);
+    buffer.putInt(chunkIndex);
+  }
 
   public static StreamChunkId decode(ByteBuf buffer) {
     assert buffer.readableBytes() >= 8 + 4;
     long streamId = buffer.readLong();
     int chunkIndex = buffer.readInt();
+    return new StreamChunkId(streamId, chunkIndex);
+  }
+  
+  public static StreamChunkId decode(ByteBuffer buffer) {
+    assert buffer.remaining() >= 8 + 4;
+    long streamId = buffer.getLong();
+    int chunkIndex = buffer.getInt();
     return new StreamChunkId(streamId, chunkIndex);
   }
 

@@ -17,11 +17,16 @@
 
 package org.apache.spark.network.protocol;
 
+import java.nio.ByteBuffer;
+
 import com.google.common.base.Objects;
 import io.netty.buffer.ByteBuf;
 
+import org.accelio.jxio.Msg;
 import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.buffer.NettyManagedBuffer;
+import org.apache.spark.network.buffer.NioManagedBuffer;
+import org.apache.spark.network.buffer.RdmaManagedBuffer;
 
 /**
  * Response to {@link ChunkFetchRequest} when a chunk exists and has been successfully fetched.
@@ -53,6 +58,11 @@ public final class ChunkFetchSuccess extends AbstractResponseMessage {
   }
 
   @Override
+  public void encode(ByteBuffer buf) {
+    streamChunkId.encode(buf);
+  }
+
+  @Override
   public ResponseMessage createFailureResponse(String error) {
     return new ChunkFetchFailure(streamChunkId, error);
   }
@@ -62,6 +72,19 @@ public final class ChunkFetchSuccess extends AbstractResponseMessage {
     StreamChunkId streamChunkId = StreamChunkId.decode(buf);
     buf.retain();
     NettyManagedBuffer managedBuf = new NettyManagedBuffer(buf.duplicate());
+    return new ChunkFetchSuccess(streamChunkId, managedBuf);
+  }
+
+  public static ChunkFetchSuccess decode(ByteBuffer buf) {
+    StreamChunkId streamChunkId = StreamChunkId.decode(buf);
+    NioManagedBuffer managedBuf = new NioManagedBuffer(buf.duplicate());
+    return new ChunkFetchSuccess(streamChunkId, managedBuf);
+  }
+  
+  public static ChunkFetchSuccess decode(Msg msg) {
+    ByteBuffer buf = msg.getIn();
+    StreamChunkId streamChunkId = StreamChunkId.decode(buf);
+    RdmaManagedBuffer managedBuf = new RdmaManagedBuffer(msg);
     return new ChunkFetchSuccess(streamChunkId, managedBuf);
   }
 

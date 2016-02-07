@@ -17,33 +17,21 @@
 
 package org.apache.spark.network.server;
 
-import java.nio.ByteBuffer;
-
-import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
+
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
+
+import java.nio.ByteBuffer;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.buffer.NioManagedBuffer;
 import org.apache.spark.network.client.RpcResponseCallback;
 import org.apache.spark.network.client.TransportClient;
-import org.apache.spark.network.protocol.ChunkFetchRequest;
-import org.apache.spark.network.protocol.ChunkFetchFailure;
-import org.apache.spark.network.protocol.ChunkFetchSuccess;
-import org.apache.spark.network.protocol.Encodable;
-import org.apache.spark.network.protocol.OneWayMessage;
-import org.apache.spark.network.protocol.RequestMessage;
-import org.apache.spark.network.protocol.RpcFailure;
-import org.apache.spark.network.protocol.RpcRequest;
-import org.apache.spark.network.protocol.RpcResponse;
-import org.apache.spark.network.protocol.StreamFailure;
-import org.apache.spark.network.protocol.StreamRequest;
-import org.apache.spark.network.protocol.StreamResponse;
-import org.apache.spark.network.util.NettyUtils;
+import org.apache.spark.network.protocol.*;
 
 /**
  * A handler that processes requests from clients and writes chunk data back. Each handler is
@@ -52,48 +40,39 @@ import org.apache.spark.network.util.NettyUtils;
  *
  * The messages should have been processed by the pipeline setup by {@link TransportServer}.
  */
-public class TransportRequestHandler extends MessageHandler<RequestMessage> {
+public abstract class TransportRequestHandler extends MessageHandler<RequestMessage> {
   private final Logger logger = LoggerFactory.getLogger(TransportRequestHandler.class);
 
-  /** The Netty channel that this handler is associated with. */
-  private final Channel channel;
+  protected final String address;
 
   /** Client on the same channel allowing us to talk back to the requester. */
-  private final TransportClient reverseClient;
+  protected final TransportClient reverseClient;
 
   /** Handles all RPC messages. */
-  private final RpcHandler rpcHandler;
+  protected final RpcHandler rpcHandler;
 
   /** Returns each chunk part of a stream. */
-  private final StreamManager streamManager;
+  protected final StreamManager streamManager;
 
   public TransportRequestHandler(
-      Channel channel,
+      String address,
       TransportClient reverseClient,
-      RpcHandler rpcHandler) {
-    this.channel = channel;
+      RpcHandler rpcHandler, 
+	  StreamManager streamManager) {
+    this.address = address;
     this.reverseClient = reverseClient;
     this.rpcHandler = rpcHandler;
-    this.streamManager = rpcHandler.getStreamManager();
+    this.streamManager = streamManager;
   }
+  public abstract void respond(final Encodable result);
+
+  protected abstract void processFetchRequest(final ChunkFetchRequest req);
 
   @Override
   public void exceptionCaught(Throwable cause) {
     rpcHandler.exceptionCaught(cause, reverseClient);
   }
-
-  @Override
-  public void channelUnregistered() {
-    if (streamManager != null) {
-      try {
-        streamManager.connectionTerminated(channel);
-      } catch (RuntimeException e) {
-        logger.error("StreamManager connectionTerminated() callback failed.", e);
-      }
-    }
-    rpcHandler.connectionTerminated(reverseClient);
-  }
-
+  
   @Override
   public void handle(RequestMessage request) {
     if (request instanceof ChunkFetchRequest) {
@@ -109,34 +88,13 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
     }
   }
 
-  private void processFetchRequest(final ChunkFetchRequest req) {
-    final String client = NettyUtils.getRemoteAddress(channel);
-
-    logger.trace("Received req from {} to fetch block {}", client, req.streamChunkId);
-
-    ManagedBuffer buf;
-    try {
-      streamManager.checkAuthorization(reverseClient, req.streamChunkId.streamId);
-      streamManager.registerChannel(channel, req.streamChunkId.streamId);
-      buf = streamManager.getChunk(req.streamChunkId.streamId, req.streamChunkId.chunkIndex);
-    } catch (Exception e) {
-      logger.error(String.format(
-        "Error opening block %s for request from %s", req.streamChunkId, client), e);
-      respond(new ChunkFetchFailure(req.streamChunkId, Throwables.getStackTraceAsString(e)));
-      return;
-    }
-
-    respond(new ChunkFetchSuccess(req.streamChunkId, buf));
-  }
-
   private void processStreamRequest(final StreamRequest req) {
-    final String client = NettyUtils.getRemoteAddress(channel);
     ManagedBuffer buf;
     try {
       buf = streamManager.openStream(req.streamId);
     } catch (Exception e) {
       logger.error(String.format(
-        "Error opening stream %s for request from %s", req.streamId, client), e);
+        "Error opening stream %s for request from %s", req.streamId, address), e);
       respond(new StreamFailure(req.streamId, Throwables.getStackTraceAsString(e)));
       return;
     }
@@ -149,7 +107,7 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
       rpcHandler.receive(reverseClient, req.body().nioByteBuffer(), new RpcResponseCallback() {
         @Override
         public void onSuccess(ByteBuffer response) {
-          respond(new RpcResponse(req.requestId, new NioManagedBuffer(response)));
+          respond(new RpcResponse(req.requestId,  new NioManagedBuffer(response)));
         }
 
         @Override
@@ -160,11 +118,9 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
     } catch (Exception e) {
       logger.error("Error while invoking RpcHandler#receive() on RPC id " + req.requestId, e);
       respond(new RpcFailure(req.requestId, Throwables.getStackTraceAsString(e)));
-    } finally {
-      req.body().release();
     }
   }
-
+  
   private void processOneWayMessage(OneWayMessage req) {
     try {
       rpcHandler.receive(reverseClient, req.body().nioByteBuffer());
@@ -173,27 +129,5 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
     } finally {
       req.body().release();
     }
-  }
-
-  /**
-   * Responds to a single message with some Encodable object. If a failure occurs while sending,
-   * it will be logged and the channel closed.
-   */
-  private void respond(final Encodable result) {
-    final String remoteAddress = channel.remoteAddress().toString();
-    channel.writeAndFlush(result).addListener(
-      new ChannelFutureListener() {
-        @Override
-        public void operationComplete(ChannelFuture future) throws Exception {
-          if (future.isSuccess()) {
-            logger.trace(String.format("Sent result %s to client %s", result, remoteAddress));
-          } else {
-            logger.error(String.format("Error sending result %s to %s; closing connection",
-              result, remoteAddress), future.cause());
-            channel.close();
-          }
-        }
-      }
-    );
   }
 }

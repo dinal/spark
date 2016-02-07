@@ -23,6 +23,7 @@ import scala.collection.JavaConverters._
 
 import org.apache.spark.{Logging, SparkConf, SecurityManager}
 import org.apache.spark.network.TransportContext
+import org.apache.spark.network.netty._
 import org.apache.spark.network.netty.SparkTransportConf
 import org.apache.spark.network.sasl.SaslServerBootstrap
 import org.apache.spark.network.server.{TransportServerBootstrap, TransportServer}
@@ -49,7 +50,7 @@ class ExternalShuffleService(sparkConf: SparkConf, securityManager: SecurityMana
     SparkTransportConf.fromSparkConf(sparkConf, "shuffle", numUsableCores = 0)
   private val blockHandler = newShuffleBlockHandler(transportConf)
   private val transportContext: TransportContext =
-    new TransportContext(transportConf, blockHandler, true)
+    TransportContext.ContextFactory.createTransportContext(transportConf, blockHandler, true)
 
   private var server: TransportServer = _
 
@@ -69,13 +70,13 @@ class ExternalShuffleService(sparkConf: SparkConf, securityManager: SecurityMana
   def start() {
     require(server == null, "Shuffle server already started")
     logInfo(s"Starting shuffle service on port $port with useSasl = $useSasl")
-    val bootstraps: Seq[TransportServerBootstrap] =
-      if (useSasl) {
-        Seq(new SaslServerBootstrap(transportConf, securityManager))
-      } else {
-        Nil
-      }
-    server = transportContext.createServer(port, bootstraps.asJava)
+    if (useSasl) {
+      val bootstraps: Seq[TransportServerBootstrap] = Seq(new SaslServerBootstrap(transportConf, securityManager))
+      server = transportContext.asInstanceOf[NettyTransportContext].createServer(port, bootstraps.asJava)
+    } else {
+      server = transportContext.createServer(port)
+    }
+    
   }
 
   /** Clean up all shuffle files associated with an application that has exited. */

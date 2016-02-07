@@ -17,7 +17,10 @@
 
 package org.apache.spark.network.shuffle.protocol;
 
+import java.nio.ByteBuffer;
+
 import com.google.common.base.Objects;
+
 import io.netty.buffer.ByteBuf;
 
 // Needed by ScalaDoc. See SPARK-7726
@@ -71,6 +74,12 @@ public class StreamHandle extends BlockTransferMessage {
   public void encode(ByteBuf buf) {
     buf.writeLong(streamId);
     buf.writeInt(numChunks);
+  }
+  
+  @Override
+  public void encode(ByteBuffer buf) {
+    buf.putLong(streamId);
+    buf.putInt(numChunks);
   }
 
   public static StreamHandle decode(ByteBuf buf) {

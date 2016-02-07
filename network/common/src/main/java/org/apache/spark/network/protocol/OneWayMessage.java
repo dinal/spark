@@ -17,7 +17,10 @@
 
 package org.apache.spark.network.protocol;
 
+import java.nio.ByteBuffer;
+
 import com.google.common.base.Objects;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 
@@ -49,6 +52,12 @@ public final class OneWayMessage extends AbstractMessage implements RequestMessa
   public void encode(ByteBuf buf) {
     // See comment in encodedLength().
     buf.writeInt((int) body().size());
+  }
+  
+  @Override
+  public void encode(ByteBuffer buf) {
+    // See comment in encodedLength().
+    buf.putInt((int) body().size());
   }
 
   public static OneWayMessage decode(ByteBuf buf) {
