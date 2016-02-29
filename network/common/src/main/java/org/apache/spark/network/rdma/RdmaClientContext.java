@@ -3,6 +3,8 @@ package org.apache.spark.network.rdma;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -26,6 +28,7 @@ import org.apache.spark.network.protocol.ChunkFetchSuccess;
 import org.apache.spark.network.protocol.RpcFailure;
 import org.apache.spark.network.protocol.RpcRequest;
 import org.apache.spark.network.protocol.RpcResponse;
+import org.apache.spark.network.protocol.StreamChunkId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,21 +41,23 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   private final EventQueueHandler eqh;
   private final ClientSession cs;
   private final MsgPool msgPool;
-  private final int CHUNK_BATCH = 5;
+  private final int CHUNK_BATCH = 10;
   private final Thread contextThread;
   private boolean established = false;
   private boolean notifyClose = false;
   private boolean closed = false;
   private boolean sessionClosed = false;
-  private ConcurrentMap<Long, RpcResponseCallback> rpcCallbacks =
-      new ConcurrentHashMap<Long, RpcResponseCallback>();
-  private ConcurrentMap<Long, ChunkReceivedCallback> chunkCallbacks =
-      new ConcurrentHashMap<Long, ChunkReceivedCallback>();
-  private ConcurrentLinkedQueue<RdmaMessage> tasks =
-      new ConcurrentLinkedQueue<RdmaMessage>();
+  private HashMap<Long, RpcResponseCallback> rpcCallbacks =
+      new HashMap<Long, RpcResponseCallback>();
+  private HashMap<StreamChunkId, ChunkReceivedCallback> chunkCallbacks =
+      new HashMap<StreamChunkId, ChunkReceivedCallback>();
+  private ConcurrentLinkedQueue<RdmaMessage> tasks = new ConcurrentLinkedQueue<RdmaMessage>();
   private ByteBuffer proccessedResp = null;
   private Message.Type proccessedRespType;
   private int reqHandled = 0;
+  private long dataRecieved = 0;
+  private int timesReseted = 1;
+  private long msgsSent = 0;
 
   public RdmaClientContext(URI uri) {
     this.uri = uri;
@@ -72,6 +77,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
       sendRequests();
       eqh.runEventLoop(EventQueueHandler.INFINITE_EVENTS, 1000);
     }
+    logger.info("closing client, sent "+msgsSent+", recieved "+dataRecieved+" data bytes, different sessions "+timesReseted);
     if (!sessionClosed) {
       cs.close();
       eqh.runEventLoop(EventQueueHandler.INFINITE_EVENTS, EventQueueHandler.INFINITE_DURATION);
@@ -88,7 +94,9 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   private void sendRequests() {
     if (proccessedResp == null) {
       while (!tasks.isEmpty()) {
-        RdmaMessage entry = tasks.peek(); 
+        RdmaMessage entry = null;
+       // logger.info(this + "tasks peeking:"+ tasks.peek()+" tasks:"+tasks);
+        entry = tasks.peek();
         try {
           List<Msg> msgsToSend = entry.encode(this);
           if (msgsToSend.isEmpty()) {
@@ -96,27 +104,29 @@ public class RdmaClientContext implements Runnable, MessageProvider {
             break;
           }
           
-          logger.info(this + " !Sending request {} to {} with msgs {}",
-              entry, uri.getHost(), msgsToSend);
+      //    logger.info(this + " Sending request {} to {} with msgs {}",
+       //       entry, uri.getHost(), msgsToSend);
           
           for (Msg m : msgsToSend) {
+            msgsSent++;
             cs.sendRequest(m);
           }
           if (entry.encodedFully) {
-           // logger.info(this + " msg was encoded fully, removing for tasks. "+entry.msg);
+         //   logger.info(this + "tasks before polling :"+tasks);
             tasks.poll();
+        //    logger.info(this + "tasks after polling :"+tasks);
           }
         } catch (Exception e) {
           tasks.poll();
-          String errorMsg = String.format("Failed to send RPC %s to %s: %s", entry.id,
+          String errorMsg = String.format("Failed to send RPC %s to %s: %s", entry.msg,
               uri.getHost(), e.getMessage());
           logger.error(errorMsg, e.getMessage());
           // close();
           try {
             if (entry.msg instanceof RpcRequest) {
-              rpcCallbacks.get(entry.id).onFailure(new IOException(errorMsg, e.getCause()));
+              rpcCallbacks.get(((RpcRequest)entry.msg).requestId).onFailure(new IOException(errorMsg, e.getCause()));
             } else if (entry.msg instanceof ChunkFetchRequest) {
-              chunkCallbacks.get(entry.id).onFailure(
+              chunkCallbacks.get(((ChunkFetchRequest)entry.msg).streamChunkId).onFailure(
                   ((ChunkFetchRequest) entry.msg).streamChunkId.chunkIndex,
                   new IOException(errorMsg, e.getCause()));
             } else {
@@ -125,6 +135,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
           } catch (Exception e1) {
             logger.error("Uncaught exception in RPC response callback handler!", e1);
           }
+          
         }
       }
     }
@@ -136,7 +147,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
         for (int i=0; i< CHUNK_BATCH; i++) {
           if (msgPool.count() > 0) {
             m = msgPool.getMsg();
-            logger.info(this + " Sending empty request {}", m);
+            msgsSent++;
             cs.sendRequest(m);
           } else {
             break;
@@ -160,7 +171,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   private final class ClientCallbacks implements ClientSession.Callbacks {
 
     public void onMsgError(Msg msg, EventReason reason) {
-      logger.info(this.toString() + " onMsgErrorCallback, " + reason);
+      logger.debug(this.toString() + " onMsgErrorCallback, " + reason);
       msgPool.releaseMsg(msg);
     }
 
@@ -179,8 +190,9 @@ public class RdmaClientContext implements Runnable, MessageProvider {
     }
 
     public void onResponse(Msg m) {
-      logger.info(RdmaClientContext.this + "client onResponse m=" + m);
+     // logger.info(RdmaClientContext.this + "client onResponse m=" + m);
       ByteBuffer msgIn = m.getIn();
+      dataRecieved += msgIn.limit();
       if (m.getIn().limit() == 0) {
         // response for UploadBlock that didn't fit into 1 buffer
         msgPool.releaseMsg(m);
@@ -208,7 +220,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
     }
 
     private void processResponse(Message.Type type, Msg msg) {
-      logger.info(RdmaClientContext.this + " processResponse type=" + type + " msg=" + msg);
+    //  logger.info(RdmaClientContext.this + " processResponse type=" + type + " msg=" + msg);
       ByteBuffer buf;
       boolean shortMsg = true;
       try {
@@ -248,22 +260,21 @@ public class RdmaClientContext implements Runnable, MessageProvider {
         case ChunkFetchFailure:
           ChunkFetchFailure chunkFail = ChunkFetchFailure.decode(buf);
           msgPool.releaseMsg(msg);
-          ChunkReceivedCallback chunkFailListener = retriveChunkCallback(
-              chunkFail.streamChunkId.hashCode());
+          ChunkReceivedCallback chunkFailListener = chunkCallbacks.get(chunkFail.streamChunkId);
           if (chunkFailListener == null) {
             logger.warn(RdmaClientContext.this + " Ignoring response for block {} from {}"
                 + " ({})" + " since it is not outstanding",chunkFail.streamChunkId, uri,
                   chunkFail.errorString);
           } else {
-            chunkCallbacks.remove(chunkFail.streamChunkId.hashCode());
+            chunkCallbacks.remove(chunkFail.streamChunkId);
             chunkFailListener.onFailure(chunkFail.streamChunkId.chunkIndex,
                 new ChunkFetchFailureException("Failure while fetching " + chunkFail.streamChunkId
                     + ": " + chunkFail.errorString));
           }
           break;
         case ChunkFetchSuccess:
-          logger.info(RdmaClientContext.this + " ChunkFetchSuccess decoding: " + buf +
-      		   " proccessedResp=" + proccessedResp);
+       //   logger.info(RdmaClientContext.this + " ChunkFetchSuccess decoding: " + buf +
+      //		   " proccessedResp=" + proccessedResp);
           ChunkFetchSuccess chunkResp;
           if (shortMsg) {
             chunkResp = ChunkFetchSuccess.decode(msg);
@@ -271,13 +282,12 @@ public class RdmaClientContext implements Runnable, MessageProvider {
             chunkResp = ChunkFetchSuccess.decode(buf);
             msgPool.releaseMsg(msg);
           }
-          ChunkReceivedCallback chunkListener = retriveChunkCallback(
-              chunkResp.streamChunkId.hashCode());
+          ChunkReceivedCallback chunkListener = chunkCallbacks.get(chunkResp.streamChunkId);
           if (chunkListener == null) {
             logger.warn(RdmaClientContext.this + " Ignoring response for block {} from {}"
                 + " since it is not outstanding",chunkResp.streamChunkId, uri);
           } else {
-            chunkCallbacks.remove((long)chunkResp.streamChunkId.hashCode());
+            chunkCallbacks.remove(chunkResp.streamChunkId);
             chunkListener.onSuccess(chunkResp.streamChunkId.chunkIndex, chunkResp.body());
           }
           chunkResp.body().release();
@@ -301,7 +311,6 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   }
 
   public void close() {
-    logger.info(this +" Closing RdmaClient, already closed="+closed);
     if (closed) return;
     notifyClose = true;
     eqh.breakEventLoop();
@@ -315,28 +324,32 @@ public class RdmaClientContext implements Runnable, MessageProvider {
         }
       }
     }
-    logger.info(this +" Closed RdmaClient");
   }
 
-  public void write(RdmaMessage req, RpcResponseCallback respCallbacks) {
-    rpcCallbacks.put(req.id, respCallbacks);
+  public void write(RdmaMessage req, long id, RpcResponseCallback respCallbacks) {
+    rpcCallbacks.put(id, respCallbacks);
+  //  logger.info(this +" 1added req to Q : "+req.msg+" tasks before: "+tasks);
     tasks.add(req);
+ //   logger.info(this +"1tasks after: "+tasks);
+    reqHandled++;
     if (tasks.size() > REQUEST_BATCH) {
       eqh.breakEventLoop();
     }
   }
 
-  public void write(RdmaMessage req, ChunkReceivedCallback respCallbacks) {
-    chunkCallbacks.put(req.id, respCallbacks);
+  public void write(RdmaMessage req, StreamChunkId id, ChunkReceivedCallback respCallbacks) {
+    chunkCallbacks.put(id, respCallbacks);
     reqHandled++;
+ //   logger.info(this +" added req to Q : "+req.msg+" tasks before: "+tasks);
     tasks.add(req);
+ //   logger.info(this +"tasks after: "+tasks);
     if (tasks.size() > REQUEST_BATCH) {
       eqh.breakEventLoop();
     }
   }
 
   public void reset() {
-    logger.info(this+" reset()");
+    timesReseted++;
     rpcCallbacks.clear();
     chunkCallbacks.clear();
     tasks.clear();
@@ -349,12 +362,12 @@ public class RdmaClientContext implements Runnable, MessageProvider {
     return established && !notifyClose && !sessionClosed;
   }
   
-  private ChunkReceivedCallback retriveChunkCallback(long key) {
-    for (Long k : chunkCallbacks.keySet()) {
-      if (k == key) {
+  /*private ChunkReceivedCallback retriveChunkCallback(StreamChunkId key) {
+    for (StreamChunkId k : chunkCallbacks.keySet()) {
+      if (k.equals(key)) {
         return chunkCallbacks.get(k);
       }
     }
     return null;
-  }
+  }*/
 }

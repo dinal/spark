@@ -38,18 +38,26 @@ import org.slf4j.LoggerFactory;
 public class RdmaTransportServer implements Runnable, TransportServer, ServerResponder {
   private final Logger logger = LoggerFactory.getLogger(RdmaTransportServer.class);
   public static final int SERVER_BUFFER_SIZE = Constants.MSGPOOL_BUF_SIZE;
-  private static final int SERVER_INITIAL_BUFFER = 500;
-  private static final int SERVER_INC_BUFFER = 50;
+  private static final int SERVER_INITIAL_BUFFER = 2000;
+  private static final int SERVER_INC_BUFFER = 300;
   private Thread mListenerThread;
   private ServerPortal mListener;
   private EventQueueHandler mEqh;
   private ArrayList<MsgPool> mMsgPools = new ArrayList<MsgPool>();
-  private ExecutorService executers[] = new ExecutorService[20];
+  private ExecutorService executers[] = new ExecutorService[50];
   private int executorNextIndex = 0;
   private RdmaTransportContext context;
-  private HashMap<ServerSession, List<Msg>> responses = new HashMap<ServerSession, List<Msg>>();
+  private ConcurrentLinkedQueue<ResponseData> responses = new ConcurrentLinkedQueue<ResponseData>();
+  
   private static final int BATCH_RESPONSE = 5;
   private boolean stop;
+  private int newSession = 0;
+  private long bytesSent = 0;
+  private long msgsSent = 0;
+  private long lastEntered = 0;
+ // private TimerStats stats;
+  private ConcurrentHashMap<Msg,Long> msgs = new ConcurrentHashMap<Msg,Long>();
+  
 
   public RdmaTransportServer(RdmaTransportContext context, InetSocketAddress address) {
     logger.info("New RdmaTransportServer listening on " + address);
@@ -64,6 +72,7 @@ public class RdmaTransportServer implements Runnable, TransportServer, ServerRes
         executers[i] = Executors.newSingleThreadExecutor();
       }
       this.context = context;
+  //    stats = new TimerStats(50000,1000);
       mListenerThread = new Thread(this);
       mListenerThread.start();
     } catch (URISyntaxException e) {
@@ -81,6 +90,7 @@ public class RdmaTransportServer implements Runnable, TransportServer, ServerRes
     }
 
     public void onSessionNew(SessionKey sesKey, String srcIP, Worker workerHint) {
+      newSession++;
       RdmaSessionProcesser processer = new RdmaSessionProcesser(RdmaTransportServer.this,
           executers[executorNextIndex], sesKey.getUri(), context.getRpcHandler());
       ServerSession session = new ServerSession(sesKey, processer.callbacks);
@@ -97,34 +107,35 @@ public class RdmaTransportServer implements Runnable, TransportServer, ServerRes
   @Override
   public void run() {
     while (!stop) {
-      int ret = mEqh.runEventLoop(EventQueueHandler.INFINITE_EVENTS, 1000);
+      int ret = mEqh.runEventLoop(EventQueueHandler.INFINITE_EVENTS, 10000);
       if (ret == -1) {
         logger.error(this.toString() + " exception occurred in eventLoop:"
             + mEqh.getCaughtException());
       }
-      synchronized (responses) {
-        for (Entry<ServerSession, List<Msg>> entry : responses.entrySet()) {
-          for (Msg m : entry.getValue()) {
-            try {
-              logger.info("send on session: "+entry.getKey()+" msg: "+m);
-              entry.getKey().sendResponse(m);
-              //logger.info(this+" sending on session="+entry.getKey()+" msg="+entry.getValue());
-            } catch (Exception e) {
-              logger.error("Error Sending response to " + entry.getKey());
-            }
-          }
+   //   if (lastEntered != 0) {
+        //logger.info("time from last entry: " + (System.nanoTime() - lastEntered)+" msgs in queue: "+responses.size());
+   //     stats.addRecord("Last Entered", System.nanoTime() - lastEntered);
+  //      stats.addRecord("Msgs is send Q", responses.size());
+  //    }
+      lastEntered = System.nanoTime();
+      while(!responses.isEmpty()) {
+        ResponseData resp = responses.remove();
+        try {
+   //       stats.addRecord("Time in send Q", System.nanoTime() - msgs.remove(resp.getMsg()));
+          bytesSent += resp.getMsg().getOut().limit();
+          msgsSent++;
+          resp.getSession().sendResponse(resp.getMsg());
+        } catch (Exception e) {
+          logger.error("Error Sending response to " + resp);
         }
-        responses.clear();
       }
     }
+
     for (int i = 0; i < executers.length; i++) {
       executers[i].shutdown();
     }
-    logger.info("server closing 2");
     mEqh.stop();
-    logger.info("server closing 3");
     mEqh.close();
-    logger.info("server closing 4");
     for (MsgPool mp : mMsgPools) {
       mp.deleteMsgPool();
     }
@@ -135,8 +146,9 @@ public class RdmaTransportServer implements Runnable, TransportServer, ServerRes
 
   @Override
   public void close() {
-    logger.info("closing server");
     stop = true;
+  //  stats.printRecords();
+    logger.info("closing server, openned "+newSession + "new sessions, sent "+bytesSent+" bytes in "+msgsSent+" msgs");
     synchronized (mEqh) {
       mEqh.breakEventLoop();
       try {
@@ -145,7 +157,6 @@ public class RdmaTransportServer implements Runnable, TransportServer, ServerRes
         logger.error("could not wait for server closing " + e.getMessage());
       }
     }
-    logger.info("Server stopped");
   }
 
   public int getPort() {
@@ -165,8 +176,8 @@ public class RdmaTransportServer implements Runnable, TransportServer, ServerRes
     }
 
     public MsgPool getAdditionalMsgPool(int in, int out) {
+      logger.info(this+" adding additional msg pool");
       MsgPool mp = new MsgPool(mNumMsgs, mInMsgSize, mOutMsgSize);
-      logger.info(this.toString() + " " + mOuter.toString() + ": new MsgPool: " + mp);
       mOuter.mMsgPools.add(mp);
       return mp;
     }
@@ -174,20 +185,33 @@ public class RdmaTransportServer implements Runnable, TransportServer, ServerRes
 
   @Override
   public void respond(ServerSession session, Msg msg) {
-    //logger.info(this+" adding to respond list session="+session+" msg="+msg);
-    synchronized (responses) {
-      List<Msg> list = responses.get(session);
-      if (list == null) {
-        list = new LinkedList<Msg>();
-        list.add(msg);
-      } else {
-        list.add(msg);
-      }
-      responses.put(session, list);
-    }
-
-    if (responses.size() >= BATCH_RESPONSE) {
+    msgs.put(msg, System.nanoTime());
+    responses.add(new ResponseData(session, msg));
+     if (responses.size() >= BATCH_RESPONSE) {
       mEqh.breakEventLoop();
+    }
+  }
+  
+  private class ResponseData {
+    private final ServerSession session;
+    private final Msg msg;
+    
+    public ResponseData(ServerSession ses, Msg m) {
+      this.session = ses;
+      this.msg = m;
+    }
+    
+    public ServerSession getSession() {
+      return session;
+    }
+    
+    public Msg getMsg() {
+      return msg;
+    }
+    
+    @Override
+    public String toString() {
+      return "Session: "+session+" ,Msg: "+msg;
     }
   }
 }

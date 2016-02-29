@@ -3,6 +3,7 @@ package org.apache.spark.network.rdma;
 import java.nio.ByteBuffer;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 
 import org.accelio.jxio.EventName;
@@ -32,6 +33,10 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
   private LinkedList<RdmaMessage> backlog;
   private ByteBuffer proccessedReq;
   private Message.Type proccessedReqType;
+  private ConcurrentHashMap<Msg,Long> executeTime = new ConcurrentHashMap<Msg,Long>();
+  private long msgsInWork = 0; 
+ // private TimerStats stats;
+  
 
   public RdmaSessionProcesser(ServerResponder responder, ExecutorService exec, String address,
       RpcHandler handler) {
@@ -40,6 +45,7 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
     callbacks = new SessionServerCallbacks();
     backlog = new LinkedList<RdmaMessage>();
     this.responder = responder;
+   // stats = new TimerStats(5000,0);
   }
 
   public final class SessionServerCallbacks implements ServerSession.Callbacks {
@@ -52,11 +58,15 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
 
     @Override
     public void onRequest(final Msg m) {
-      logger.info(session + " onRequest " + m);
+      msgsInWork++;
+     // executeTime.put(m, System.nanoTime());
       executor.execute(new Runnable() {
         @Override
         public void run() {
-          currentMsg = m;
+          currentMsg = m;         
+          //long time = System.nanoTime() - executeTime.put(m, System.nanoTime());
+         // stats.addRecord("Execution", time);
+         // stats.addRecord("Msgs in work Q", msgsInWork);
           processMsg(m);
         }
       });
@@ -64,7 +74,10 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
 
     @Override
     public void onSessionEvent(EventName arg0, EventReason arg1) {
-      logger.info(session.toString()+" recieved onSessionEvent "+arg0+" "+arg1);
+      logger.debug(session.toString()+" recieved onSessionEvent "+arg0+" "+arg1);
+      //if (arg0 == EventName.SESSION_CLOSED) {
+      //  stats.printRecords();
+     // }
     }
   }
 
@@ -82,7 +95,7 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
         if (dataLength <= data.capacity()) {
           // msg fits in 1 buffer, no need to concatenate buffers
           RequestMessage decoded = decode(proccessedReqType, data);
-          logger.info(this.session + " short decoded, going to handle " + decoded);
+         // logger.info(this.session + " short decoded, going to handle " + decoded));
           handle(decoded);
           return;
         } else {
@@ -99,7 +112,7 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
         // got all data, can decode
         RequestMessage decoded = decode(proccessedReqType, proccessedReq);
         proccessedReq = null;
-        logger.info(this.session + " long msg= "+m+" decoded, going to handle " + decoded);
+    //    logger.info(this.session + " long msg= "+m+" decoded, going to handle " + decoded);
         handle(decoded);
       }
     }
@@ -119,8 +132,7 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
   @Override
   protected void processFetchRequest(final ChunkFetchRequest req) {
 	
-	logger.trace("Received req from {} to fetch block {}", address, req.streamChunkId);
-	
+	//logger.trace("Received req from {} to fetch block {}", address, req.streamChunkId);
 	ManagedBuffer buf;
 	try {
 	  buf = streamManager.getChunk(req.streamChunkId.streamId, req.streamChunkId.chunkIndex);
@@ -130,18 +142,18 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
 	  respond(new ChunkFetchFailure(req.streamChunkId, Thread.currentThread().getStackTrace().toString()));
 	  return;
 	}
-	
 	respond(new ChunkFetchSuccess(req.streamChunkId, buf));
   }
   
   @Override
-  public void respond(Encodable result) {
-    logger.info(this.session + " adding to backlog "+(Message) result);
-    backlog.add(new RdmaMessage((Message) result, 0));
+  public void respond(Encodable result) {   
+    //logger.debug(this.session + " adding to backlog "+(Message) result);
+    backlog.add(new RdmaMessage((Message) result));
     encodeAndSend();
   }
 
   private void encodeAndSend() {
+    long time;
     RdmaMessage rdmaMsg = backlog.peek();
     if (rdmaMsg != null) { 
       List<Msg> msgsToSend = rdmaMsg.encode(this);
@@ -151,10 +163,18 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
       if (rdmaMsg.encodedFully) {
         backlog.poll();
       }
-      responder.respond(session, msgsToSend.get(0));
+      Msg m = msgsToSend.get(0);
+     // stats.addRecord("Overall", System.nanoTime() - executeTime.remove(m));
+     // time = System.nanoTime();
+      responder.respond(session, m);
+     // stats.addRecord("Add to send Q", System.nanoTime() - time);
     } else {
+      //stats.addRecord("Overall", System.nanoTime() - executeTime.remove(currentMsg));
+     // time = System.nanoTime();
       responder.respond(session, currentMsg);
+     // stats.addRecord("Add to send Q", System.nanoTime() - time);   
     }
+    msgsInWork--;
   }
 
   public void setSession(ServerSession session) {

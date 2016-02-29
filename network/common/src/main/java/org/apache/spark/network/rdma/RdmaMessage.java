@@ -23,15 +23,13 @@ public class RdmaMessage {
   private final Logger logger = LoggerFactory.getLogger(RdmaMessage.class);
   public static final int HEADER_LENGTH = 9; // HEADER=8 LONG, TYPE=1 BYTE
   public final Message msg;
-  public final long id;
   public boolean encodedFully = false;
   public boolean decodedFully = false;
   private final int msgSize;
   private int encodedSize = 0;
 
-  public RdmaMessage(Message msg, long id) {
+  public RdmaMessage(Message msg) {
     this.msg = msg;
-    this.id = id;
     if (msg.isBodyInFrame()) {
       msgSize = HEADER_LENGTH + msg.encodedLength() + (int)msg.body().size();
     } else {

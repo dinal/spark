@@ -50,9 +50,7 @@ public class RdmaTransportClient extends TransportClient {
   public void fetchChunk(long streamId, int chunkIndex, ChunkReceivedCallback callback) {
     logger.debug("Sending fetch chunk request {} to {}", chunkIndex, uri);
     final StreamChunkId streamChunkId = new StreamChunkId(streamId, chunkIndex);
-    context.write(
-        new RdmaMessage(new ChunkFetchRequest(streamChunkId), (long) streamChunkId.hashCode()),
-        callback);
+    context.write(new RdmaMessage(new ChunkFetchRequest(streamChunkId)), streamChunkId, callback);
 
   }
 
@@ -60,7 +58,7 @@ public class RdmaTransportClient extends TransportClient {
   public long sendRpc(ByteBuffer message, final RpcResponseCallback callback) {
     logger.trace("Sending RPC to {}:{}", host, port);
     final long requestId = Math.abs(UUID.randomUUID().getLeastSignificantBits());
-    context.write(new RdmaMessage(new RpcRequest(requestId, new NioManagedBuffer(message)), requestId), callback);
+    context.write(new RdmaMessage(new RpcRequest(requestId, new NioManagedBuffer(message))), requestId, callback);
     return requestId;
   }
 
