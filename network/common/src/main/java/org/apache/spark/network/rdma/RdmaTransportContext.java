@@ -41,7 +41,7 @@ public class RdmaTransportContext implements TransportContext{
 
   @Override
   public TransportClientFactory createClientFactory() {
-    return new RdmaTransportClientFactory();
+    return new RdmaTransportClientFactory(conf);
   }
 
   /** Create a server which will attempt to bind to a specific port. */

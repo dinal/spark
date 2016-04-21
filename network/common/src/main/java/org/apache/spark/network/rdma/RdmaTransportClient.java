@@ -27,7 +27,7 @@ public class RdmaTransportClient extends TransportClient {
 
   private final String host;
   private final int port;
-  private RdmaClientContext context;
+  private RdmaClientSession session;
   private URI uri;
 
   public RdmaTransportClient(String host, int port) {
@@ -35,7 +35,7 @@ public class RdmaTransportClient extends TransportClient {
     this.port = port;
     try {
       uri = new URI("rdma://" + host + ":"+port);
-      context = new RdmaClientContext(uri);
+      session = new RdmaClientSession(uri);
     } catch (URISyntaxException e) {
       logger.error("Error creating RDMA uri");
     }
@@ -43,28 +43,32 @@ public class RdmaTransportClient extends TransportClient {
 
   @Override
   public boolean isActive() {
-    return context.isActive();
+    return session.isActive();
+  }
+  
+  public boolean isWorking() {
+    return session.isWorking();
   }
 
   @Override
   public void fetchChunk(long streamId, int chunkIndex, ChunkReceivedCallback callback) {
     logger.debug("Sending fetch chunk request {} to {}", chunkIndex, uri);
     final StreamChunkId streamChunkId = new StreamChunkId(streamId, chunkIndex);
-    context.write(new RdmaMessage(new ChunkFetchRequest(streamChunkId)), streamChunkId, callback);
+    session.write(new RdmaMessage(new ChunkFetchRequest(streamChunkId)), streamChunkId, callback);
 
   }
 
   @Override
   public long sendRpc(ByteBuffer message, final RpcResponseCallback callback) {
-    logger.trace("Sending RPC to {}:{}", host, port);
+    logger.debug("Sending RPC to {}:{}", host, port);
     final long requestId = Math.abs(UUID.randomUUID().getLeastSignificantBits());
-    context.write(new RdmaMessage(new RpcRequest(requestId, new NioManagedBuffer(message))), requestId, callback);
+    session.write(new RdmaMessage(new RpcRequest(requestId, new NioManagedBuffer(message))), requestId, callback);
     return requestId;
   }
 
   @Override
   public void close() {
-    context.close();
+    session.close();
   }
   
   /**
@@ -72,9 +76,9 @@ public class RdmaTransportClient extends TransportClient {
    * @return if false the connection is closed
    */
   public boolean reset() {
-    Boolean connected = context.isConnected();
+    Boolean connected = session.isActive();
     if (connected)
-      context.reset();
+      session.reset();
     return connected;
   }
   

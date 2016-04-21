@@ -38,10 +38,6 @@ public class RdmaMessage {
   }
 
   public List<Msg> encode(MessageProvider provider) {
-    if (encodedFully) {
-      logger.error("Message was already encoded");
-      return null;
-    }
     List<Msg> encodedData = new LinkedList<Msg>();
     Message.Type msgType = msg.type();
     logger.debug(this+" encode going to msgType=" + msgType + " msg=" + msg + " msgSize=" + msgSize);
