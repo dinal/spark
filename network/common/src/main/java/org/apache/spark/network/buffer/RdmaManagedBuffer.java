@@ -40,7 +40,7 @@ public final class RdmaManagedBuffer extends ManagedBuffer {
   private int referenceCount = 1;
 
   public RdmaManagedBuffer(Msg msg) {
-    logger.info("RdmaManagedBuffer "+msg);
+    logger.trace("RdmaManagedBuffer "+msg);
     this.buf = msg.getIn();
     this.msg = msg;
   }
@@ -62,14 +62,14 @@ public final class RdmaManagedBuffer extends ManagedBuffer {
 
   @Override
   public ManagedBuffer retain() {
-    logger.info("RdmaManagedBuffer retain " + referenceCount + " " + msg);
+    logger.trace("RdmaManagedBuffer retain " + referenceCount + " " + msg);
     referenceCount++;
     return this;
   }
 
   @Override
   public ManagedBuffer release() {
-    logger.info("RdmaManagedBuffer release " + referenceCount + " " + msg);
+    logger.trace("RdmaManagedBuffer release " + referenceCount + " " + msg);
   	referenceCount--;
   	if (referenceCount == 0) {
   	  msg.returnToParentPool();

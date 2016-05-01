@@ -20,7 +20,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   private static volatile Random rand = new Random();
   private final Logger logger = LoggerFactory.getLogger(RdmaClientContext.class);
   private static int CLIENT_BUF_COUNT = 100;
-  private final int REQUEST_BATCH = 3;
+  private final int REQUEST_BATCH = 5;
   private final EventQueueHandler eqh;
   private final MsgPool msgPool;
   private final Thread contextThread;
@@ -40,7 +40,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   }
  
   public RdmaClientContext() {
-    logger.debug("starting Context");
+    logger.info("starting Context");
     eqh = new EventQueueHandler(null);
     msgPool = new MsgPool(CLIENT_BUF_COUNT, Constants.MSGPOOL_BUF_SIZE, Constants.MSGPOOL_BUF_SIZE);
     contextThread = new Thread(this);
@@ -95,8 +95,13 @@ public class RdmaClientContext implements Runnable, MessageProvider {
         }
       } catch (Exception e) {
         tasks.poll();
-        String errorMsg = String.format("Failed to send RPC %s from %s: %s", entry.req.msg,
+        String errorMsg;
+        if (entry.req != null) {
+          errorMsg = String.format("Failed to send RPC %s from %s: %s", entry.req.msg,
             entry.ses, e.getMessage());
+        } else {
+          errorMsg = String.format("Failed to send empty msg from %s: %s", entry.ses, e.getMessage());
+        }
         logger.error(errorMsg, e.getMessage());
       }
     }
@@ -120,14 +125,10 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   }
 
   public void addTask(RdmaMessage req, ClientSession ses) {
-    synchronized (tasks) {
-     // int before = tasks.size();
-      tasks.add(new Task(req,ses));
-    //  logger.info("added to task, before="+before+" after="+tasks.size());
-    }
-    if (tasks.size() > REQUEST_BATCH) {
-      eqh.breakEventLoop();
-    }
+    tasks.add(new Task(req,ses));
+  /*if (tasks.size() > REQUEST_BATCH) {
+    eqh.breakEventLoop();
+    }*/
   }
 
   public void updateClosed(RdmaClientSession rdmaClientSession) {

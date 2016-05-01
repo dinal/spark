@@ -30,7 +30,7 @@ public class RdmaServerWorker extends Thread implements Worker {
   private ArrayList<MsgPool> mMsgPools = new ArrayList<MsgPool>();;;
   private boolean stop = false;
   private ConcurrentLinkedQueue<ServerSession> sessions = new ConcurrentLinkedQueue<ServerSession>();
-  private TimerStats stats;
+ // private TimerStats stats;
   private int numHandledSessions = 0;
   
   
@@ -40,7 +40,7 @@ public class RdmaServerWorker extends Thread implements Worker {
     mEqh = new EventQueueHandler(new EqhCallbacks(SERVER_INC_BUFFER, SERVER_BUFFER_SIZE, SERVER_BUFFER_SIZE));
     mEqh.bindMsgPool(pool);
     sp = new ServerPortal(mEqh, uri, new PortalServerCallbacks());
-    stats = new TimerStats(100, 0);
+   // stats = new TimerStats(100, 0);
   }
   
   public void run() {
@@ -65,7 +65,9 @@ public class RdmaServerWorker extends Thread implements Worker {
     stop = true;
     logger.debug(this.toString() + " closing worker, session "+sessions.size());
     for (ServerSession ses : sessions) {
-      ses.close();
+      if (!ses.getIsClosing()) {
+        ses.close();
+      }
     }
     checkClose();
   }
@@ -82,7 +84,7 @@ public class RdmaServerWorker extends Thread implements Worker {
   
   private void checkClose() {
     if (stop && sessions.isEmpty()) {
-      stats.addRecord("NumSessions", numHandledSessions);
+      //stats.addRecord("NumSessions", numHandledSessions);
       mEqh.breakEventLoop();
     }
   }

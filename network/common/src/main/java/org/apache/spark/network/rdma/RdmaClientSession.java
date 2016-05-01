@@ -82,7 +82,11 @@ public class RdmaClientSession {
     }
 
     public void onSessionEvent(EventName event, EventReason reason) {
-      logger.debug(RdmaClientSession.this + " onSessionEvent " + event+" reason "+reason);
+      if (sessionEstablished) {
+        logger.debug(RdmaClientSession.this + " onSessionEvent " + event+" reason "+reason);
+      } else {
+        logger.error(RdmaClientSession.this + " onSessionEvent " + event+" reason "+reason);
+      }
       if (event == EventName.SESSION_CLOSED || event == EventName.SESSION_ERROR
           || event == EventName.SESSION_REJECT) { // normal exit
         synchronized (lock) {
@@ -119,6 +123,7 @@ public class RdmaClientSession {
         }
       }
       proccessedResp.put(msgIn);
+
       if (proccessedResp.hasRemaining()) {
         // not finished yet
         ctx.retunrMsg(m);
