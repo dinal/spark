@@ -40,7 +40,7 @@ public class RdmaMessage {
   public List<Msg> encode(MessageProvider provider) {
     List<Msg> encodedData = new LinkedList<Msg>();
     Message.Type msgType = msg.type();
-    logger.debug(this+" encode going to msgType=" + msgType + " msg=" + msg + " msgSize=" + msgSize);
+    //logger.debug(this+" encode going to msgType=" + msgType + " msg=" + msg + " msgSize=" + msgSize);
     while (encodedSize < msgSize) {
       Msg m = provider.getMsg();
       if (m == null) {
@@ -68,7 +68,7 @@ public class RdmaMessage {
 
   // encodes only part of the msg that can fit into the buffer
   private void encodePartial(Message.Type type, boolean includeMsgHeader, ByteBuffer buf) {
-    logger.debug(this +" encodePartial type=" + type + " msg=" + msg + " msgSize=" + msgSize);
+   // logger.debug(this +" encodePartial type=" + type + " msg=" + msg + " msgSize=" + msgSize);
     int sizeToWrite = 0;
     try {
       switch (type) {

@@ -68,7 +68,7 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
   }
 
   private void processMsg(Msg m) {
-    logger.trace(RdmaSessionProcesser.this + " recieved msg " + m);
+    logger.debug(RdmaSessionProcesser.this + " recieved msg " + m);
     ByteBuffer data = m.getIn();
     if (data.limit() == 0) {
       // this means we received a fetch request in the past
@@ -81,7 +81,7 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
         if (dataLength <= data.capacity()) {
           // msg fits in 1 buffer, no need to concatenate buffers
           RequestMessage decoded = decode(proccessedReqType, data);
-          logger.trace(RdmaSessionProcesser.this + " short decoded, going to handle " + decoded);
+          logger.debug(RdmaSessionProcesser.this + " short decoded, going to handle " + decoded);
           handle(decoded);
           return;
         } else {
@@ -133,7 +133,7 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
   
   @Override
   public void respond(Encodable result) {   
-    logger.trace(this.session + " adding to backlog "+(Message) result);
+    logger.debug(this.session + " adding to backlog "+(Message) result);
     backlog.add(new RdmaMessage((Message) result));
     encodeAndSend();
   }
@@ -151,12 +151,12 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
           backlog.poll();
         }
         Msg m = msgsToSend.get(0);
-        logger.trace(RdmaSessionProcesser.this +" sending response entry="+rdmaMsg+" msg="+m);
+        logger.debug(RdmaSessionProcesser.this +" sending response entry="+rdmaMsg+" msg="+m);
         session.sendResponse(m);
        // stats.addRecord("Execution", System.nanoTime() - executeTime.remove(m));
         
       } else {
-        logger.trace(RdmaSessionProcesser.this +" sending empty entry="+rdmaMsg);
+        logger.debug(RdmaSessionProcesser.this +" sending empty entry="+rdmaMsg);
         session.sendResponse(currentMsg);
        // stats.addRecord("Execution", System.nanoTime() - executeTime.remove(currentMsg));
       }

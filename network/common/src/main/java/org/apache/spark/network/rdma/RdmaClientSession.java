@@ -43,9 +43,11 @@ public class RdmaClientSession {
   private boolean working = true;
   private Object lock = new Object();
   
-  public RdmaClientSession(URI uri) {
+  public RdmaClientSession(URI uri, RdmaClientContext ctx) {
+    
     logger.debug(this+" new RdmaClientSession uri="+uri);
-    this.ctx = RdmaClientContext.getContext(this);
+    this.ctx = ctx;
+    ctx.addSession(this);
     this.uri = uri;
     cs = new ClientSession(ctx.getEqh(), uri, new ClientCallbacks());
     synchronized (lock) {
@@ -63,13 +65,6 @@ public class RdmaClientSession {
 
     public void onMsgError(Msg msg, EventReason reason) {
       logger.error(this.toString() + " onMsgErrorCallback, " + reason);
-      /* msgIn = msg.getIn();
-      if (msgIn.limit() != 0) {
-        long dataSize = msgIn.getLong();
-        Message.Type type = Message.Type.decode(msgIn);
-        if (type == Type.RpcResponse)
-        
-      }*/
       ctx.retunrMsg(msg);
     }
 
@@ -99,7 +94,7 @@ public class RdmaClientSession {
     }
 
     public void onResponse(Msg m) {
-      logger.trace(RdmaClientSession.this +" onResponse "+m);
+      logger.debug(RdmaClientSession.this +" onResponse "+m);
       ByteBuffer msgIn = m.getIn();
       dataRecieved += msgIn.limit();
       if (m.getIn().limit() == 0) {
@@ -116,14 +111,10 @@ public class RdmaClientSession {
         } else {
           proccessedResp = ByteBuffer.allocate((int) dataSize - RdmaMessage.HEADER_LENGTH);
           double numEmptyMsgs = Math.ceil(((double)proccessedResp.limit() - msgIn.remaining()) / Constants.MSGPOOL_BUF_SIZE);
-        //  logger.info(RdmaClientSession.this+" allocating buffer "+proccessedResp.limit()+" (datesize="+dataSize+",msgIn.remaining()="+msgIn.remaining()+") numEmptyMsgs="+numEmptyMsgs);
-          for (int i=0; i<numEmptyMsgs; i++) {
-            ctx.addTask(null, cs);
-          }
+          ctx.addTask(null, cs, (int)numEmptyMsgs);
         }
       }
       proccessedResp.put(msgIn);
-
       if (proccessedResp.hasRemaining()) {
         // not finished yet
         ctx.retunrMsg(m);
@@ -134,7 +125,7 @@ public class RdmaClientSession {
     }
 
     private void processResponse(Message.Type type, Msg msg) {
-      logger.trace(RdmaClientSession.this +" processResponse "+msg+" type:"+type);
+      logger.debug(RdmaClientSession.this +" processResponse "+msg+" type:"+type);
       ByteBuffer buf;
       boolean shortMsg = true;
       try {
@@ -148,7 +139,6 @@ public class RdmaClientSession {
         switch (type) {
         case RpcResponse:
           RpcResponse rpcResp = RpcResponse.decode(buf);
-          ctx.retunrMsg(msg);
           RpcResponseCallback rpcListener = rpcCallbacks.get(rpcResp.requestId);
           if (rpcListener == null) {
             logger.warn(RdmaClientSession.this + 
@@ -158,10 +148,10 @@ public class RdmaClientSession {
             rpcCallbacks.remove(rpcResp.requestId);
             rpcListener.onSuccess(rpcResp.body().nioByteBuffer());
           }
+          ctx.retunrMsg(msg);
           break;
         case RpcFailure:
           RpcFailure rpcFail = RpcFailure.decode(buf);
-          ctx.retunrMsg(msg);
           RpcResponseCallback rpcFailListener = rpcCallbacks.get(rpcFail.requestId);
           if (rpcFailListener == null) {
             logger.warn(RdmaClientSession.this + " Ignoring response for RPC {} from {} ({}) since"
@@ -170,10 +160,10 @@ public class RdmaClientSession {
             rpcCallbacks.remove(rpcFail.requestId);
             rpcFailListener.onFailure(new RuntimeException(rpcFail.errorString));
           }
+          ctx.retunrMsg(msg);
           break;
         case ChunkFetchFailure:
           ChunkFetchFailure chunkFail = ChunkFetchFailure.decode(buf);
-          ctx.retunrMsg(msg);
           ChunkReceivedCallback chunkFailListener = chunkCallbacks.get(chunkFail.streamChunkId);
           if (chunkFailListener == null) {
             logger.warn(RdmaClientSession.this + " Ignoring response for block {} from {}"
@@ -185,6 +175,7 @@ public class RdmaClientSession {
                 new ChunkFetchFailureException("Failure while fetching " + chunkFail.streamChunkId
                     + ": " + chunkFail.errorString));
           }
+          ctx.retunrMsg(msg);
           break;
         case ChunkFetchSuccess:
        //   logger.info(RdmaClientContext.this + " ChunkFetchSuccess decoding: " + buf +
@@ -194,7 +185,6 @@ public class RdmaClientSession {
             chunkResp = ChunkFetchSuccess.decode(msg);
           } else {
             chunkResp = ChunkFetchSuccess.decode(buf);
-            ctx.retunrMsg(msg);
           }
           ChunkReceivedCallback chunkListener = chunkCallbacks.get(chunkResp.streamChunkId);
           if (chunkListener == null) {
@@ -205,6 +195,9 @@ public class RdmaClientSession {
             chunkListener.onSuccess(chunkResp.streamChunkId.chunkIndex, chunkResp.body());
           }
           chunkResp.body().release();
+          if (!shortMsg) {
+            ctx.retunrMsg(msg);
+          }
           if (chunkCallbacks.isEmpty()) {
             working = false;
           }
@@ -224,17 +217,20 @@ public class RdmaClientSession {
   public void write(RdmaMessage req, long id, RpcResponseCallback respCallbacks) {
     logger.debug(this+" "+Thread.currentThread()+" sending rpc");
     rpcCallbacks.put(id, respCallbacks);
-    ctx.addTask(req, cs);
+    ctx.addTask(req, cs, 1);
   }
 
   public void write(RdmaMessage req, StreamChunkId id, ChunkReceivedCallback respCallbacks) {
     logger.debug(this+" "+Thread.currentThread()+" requesting chunk");
     chunkCallbacks.put(id, respCallbacks);
-    ctx.addTask(req, cs);
+    ctx.addTask(req, cs, 1);
   }
 
   public void close() {
     notifyClose = true;
+    if (!cs.getIsClosing()) {
+      cs.close();
+    }
   }
 
   public void reset() {

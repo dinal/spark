@@ -30,12 +30,12 @@ public class RdmaTransportClient extends TransportClient {
   private RdmaClientSession session;
   private URI uri;
 
-  public RdmaTransportClient(String host, int port) {
+  public RdmaTransportClient(String host, int port, RdmaClientContext ctx) {
     this.host = host;
     this.port = port;
     try {
       uri = new URI("rdma://" + host + ":"+port);
-      session = new RdmaClientSession(uri);
+      session = new RdmaClientSession(uri, ctx);
     } catch (URISyntaxException e) {
       logger.error("Error creating RDMA uri");
     }

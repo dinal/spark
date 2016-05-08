@@ -14,30 +14,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class RdmaClientContext implements Runnable, MessageProvider {
-
-  private static LinkedList<RdmaClientContext> contexts = new LinkedList<RdmaClientContext>();
   private static boolean CLOSE = false;
-  private static volatile Random rand = new Random();
   private final Logger logger = LoggerFactory.getLogger(RdmaClientContext.class);
   private static int CLIENT_BUF_COUNT = 100;
-  private final int REQUEST_BATCH = 5;
+  private final int SEND_TH = 20;
   private final EventQueueHandler eqh;
   private final MsgPool msgPool;
   private final Thread contextThread;
   private ConcurrentLinkedQueue<Task> tasks = new ConcurrentLinkedQueue<Task>();
   private ConcurrentLinkedQueue<RdmaClientSession> sessions = new ConcurrentLinkedQueue<RdmaClientSession>();
   private int msgsSent;
-
-  public static void createContexts(int numThreads) {
-    for (int i=0; i< numThreads; i++) {
-      contexts.add(new RdmaClientContext());
-    }
-  }
-  protected static RdmaClientContext getContext(RdmaClientSession ses) {
-    RdmaClientContext ctx = contexts.get(rand.nextInt(contexts.size()));
-    ctx.sessions.add(ses);
-    return ctx;
-  }
  
   public RdmaClientContext() {
     logger.info("starting Context");
@@ -50,7 +36,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   public void run() {
     while (!CLOSE) {
       sendRequests();
-      int ret = eqh.runEventLoop(EventQueueHandler.INFINITE_EVENTS, 10000);
+      int ret = eqh.runEventLoop(EventQueueHandler.INFINITE_EVENTS, EventQueueHandler.INFINITE_DURATION);
       if (ret == -1) {
         logger.error(this + " runEventLoop returned with error: "+eqh.getCaughtException());
       }
@@ -73,10 +59,17 @@ public class RdmaClientContext implements Runnable, MessageProvider {
             //no msgs in pool
             break;
           } else {
-            logger.trace(this+" sending empty msg, entry="+entry.req+" to: "+entry.ses);
+            //entry = tasks.poll();
+            logger.debug(this+" sending empty msg, entry="+entry.req+" to: "+entry.ses+", count: "+entry.count);
             entry.ses.sendRequest(m);
             msgsSent++;
-            tasks.poll();
+            entry.count--;
+            if (entry.count == 0) {
+              tasks.poll();
+            }
+            /*if (entry.count != 0) {
+              tasks.add(entry);  
+            }*/
           }
          //send regular req 
         } else {
@@ -86,7 +79,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
           }
           for (Msg m : msgsToSend) {
             msgsSent++;
-            logger.trace(this+" sending req entry="+entry.req+" msg="+m+" to: "+entry.ses);
+            logger.debug(this+" sending req entry="+entry.req+" msg="+m+" to: "+entry.ses);
             entry.ses.sendRequest(m);
           }
           if (entry.req.encodedFully) {
@@ -100,7 +93,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
           errorMsg = String.format("Failed to send RPC %s from %s: %s", entry.req.msg,
             entry.ses, e.getMessage());
         } else {
-          errorMsg = String.format("Failed to send empty msg from %s: %s", entry.ses, e.getMessage());
+          errorMsg = String.format("Failed to send empty msg from %s (count%d): %s", entry.ses, entry.count, e.getMessage());
         }
         logger.error(errorMsg, e.getMessage());
       }
@@ -109,7 +102,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
 
   // msg can be null
   public Msg getMsg() {
-    if (msgPool.count() == 0) {
+    if (msgPool.isEmpty()) {
       return null;
     }
     Msg msg = msgPool.getMsg();
@@ -122,31 +115,45 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   
   public void retunrMsg(Msg msg) {
     msgPool.releaseMsg(msg);
+    sendRequests();
   }
 
-  public void addTask(RdmaMessage req, ClientSession ses) {
-    tasks.add(new Task(req,ses));
-  /*if (tasks.size() > REQUEST_BATCH) {
-    eqh.breakEventLoop();
-    }*/
+  public void addTask(RdmaMessage req, ClientSession ses, int counter) {
+    logger.debug(this+" addTask, req="+req+" ses="+ses);
+    tasks.add(new Task(req, ses, counter));
+    if (msgPool.capacity() - msgPool.count() < SEND_TH) {
+      eqh.breakEventLoop();
+    }
   }
 
   public void updateClosed(RdmaClientSession rdmaClientSession) {
-   sessions.remove(rdmaClientSession);
-   if (sessions.size() == 0 && CLOSE) {
-     eqh.breakEventLoop();
-   }
+    sessions.remove(rdmaClientSession);
+    checkIfCanClose();
   }
-  public static void requestToClose() {
-   CLOSE = true;
+  
+  private void checkIfCanClose() {
+    if (sessions.size() == 0 && CLOSE) {
+      eqh.breakEventLoop();
+    }
+  }
+
+  public void requestToClose() {
+    CLOSE = true;
+    checkIfCanClose();
+  }
+  
+  public void addSession(RdmaClientSession ses) {
+    sessions.add(ses);
   }
   
   class Task {
     public RdmaMessage req;
     public ClientSession ses;
-    public Task(RdmaMessage req, ClientSession ses) {
+    public int count;
+    public Task(RdmaMessage req, ClientSession ses, int count) {
       this.req = req;
       this.ses = ses;
+      this.count = count;
     }
   }
 }

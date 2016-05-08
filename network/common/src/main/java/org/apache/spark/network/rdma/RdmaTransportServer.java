@@ -13,11 +13,12 @@ import org.accelio.jxio.ServerPortal;
 import org.accelio.jxio.ServerSession;
 import org.accelio.jxio.ServerSession.SessionKey;
 import org.accelio.jxio.WorkerCache.Worker;
+import org.accelio.jxio.WorkerCache.WorkerProvider;
 import org.apache.spark.network.server.TransportServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class RdmaTransportServer implements Runnable, TransportServer {
+public class RdmaTransportServer implements Runnable, TransportServer, WorkerProvider {
   private final Logger logger = LoggerFactory.getLogger(RdmaTransportServer.class);
   private final int NUM_WORKERS;
   private Thread mListenerThread;
@@ -36,7 +37,7 @@ public class RdmaTransportServer implements Runnable, TransportServer {
     try {
       URI uri = new URI("rdma://" + address.getHostName() + ":" + address.getPort());
       mEqh = new EventQueueHandler(null);
-      mListener = new ServerPortal(mEqh, uri, new PortalServerCallbacks(), null);
+      mListener = new ServerPortal(mEqh, uri, new PortalServerCallbacks(), this);
       for (int i = 1; i <= NUM_WORKERS; i++) {
         serverWorkers.add(new RdmaServerWorker(mListener.getUriForServer()));
       }
@@ -56,7 +57,12 @@ public class RdmaTransportServer implements Runnable, TransportServer {
 
     public void onSessionNew(SessionKey sesKey, String srcIP, Worker workerHint) {
       newSession++;
-      RdmaServerWorker w = getWorker();
+      RdmaServerWorker w;
+      if (workerHint == null) {
+        w = getWorker();
+      } else {
+        w = (RdmaServerWorker)workerHint;
+      }
       logger.debug("onSessionNew "+srcIP+" forwarding to: "+w);
       RdmaSessionProcesser processer = new RdmaSessionProcesser(
           w, sesKey.getUri(), context.getRpcHandler());
@@ -96,6 +102,7 @@ public class RdmaTransportServer implements Runnable, TransportServer {
     return mListener.getUri().getPort();
   }
 
+  @Override
   public RdmaServerWorker getWorker() {
     return serverWorkers.get(rand.nextInt(NUM_WORKERS));
   }
