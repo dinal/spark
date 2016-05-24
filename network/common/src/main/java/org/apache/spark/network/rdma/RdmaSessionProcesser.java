@@ -142,7 +142,7 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
     RdmaMessage rdmaMsg = backlog.peek();
     try {
       if (rdmaMsg != null) {
-        List<Msg> msgsToSend = rdmaMsg.encode(this);
+        List<Msg> msgsToSend = rdmaMsg.encode(this, null);
         // always will include only one msg since we are replaying to each msg
         // immediately, and not accumulating them
         assert msgsToSend.size() == 1;

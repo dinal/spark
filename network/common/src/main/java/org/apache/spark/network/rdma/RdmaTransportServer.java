@@ -32,7 +32,7 @@ public class RdmaTransportServer implements Runnable, TransportServer, WorkerPro
   private LinkedList<RdmaServerWorker> serverWorkers = new LinkedList<RdmaServerWorker>();
 
   public RdmaTransportServer(RdmaTransportContext context, InetSocketAddress address) {
-    NUM_WORKERS = context.getConf().serverThreads();
+    NUM_WORKERS = Math.max(context.getConf().serverThreads(), 1);
     logger.info("New RdmaTransportServer listening on " + address+" starting "+NUM_WORKERS+" workers");
     try {
       URI uri = new URI("rdma://" + address.getHostName() + ":" + address.getPort());

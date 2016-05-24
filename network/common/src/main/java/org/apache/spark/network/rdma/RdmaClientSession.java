@@ -43,8 +43,8 @@ public class RdmaClientSession {
   private boolean working = true;
   private Object lock = new Object();
   
-  public RdmaClientSession(URI uri, RdmaClientContext ctx) {
-    
+  public RdmaClientSession(URI uri, RdmaClientContext ctx) 
+  {  
     logger.debug(this+" new RdmaClientSession uri="+uri);
     this.ctx = ctx;
     ctx.addSession(this);
@@ -95,6 +95,7 @@ public class RdmaClientSession {
 
     public void onResponse(Msg m) {
       logger.debug(RdmaClientSession.this +" onResponse "+m);
+      ctx.inFlight--;
       ByteBuffer msgIn = m.getIn();
       dataRecieved += msgIn.limit();
       if (m.getIn().limit() == 0) {
@@ -105,14 +106,20 @@ public class RdmaClientSession {
         //new response, not in the middle of getting chunk
         long dataSize = msgIn.getLong();
         proccessedRespType = Message.Type.decode(msgIn);
-        if (dataSize <= msgIn.capacity()) {
+        proccessedResp = ByteBuffer.allocate((int) dataSize - RdmaMessage.HEADER_LENGTH);
+        
+        if (dataSize > msgIn.capacity()) {
+          double numEmptyMsgs = Math.ceil(((double)proccessedResp.limit() - msgIn.remaining()) / Constants.MSGPOOL_BUF_SIZE);
+          ctx.addTask(null, cs, (int)numEmptyMsgs);
+        }
+        /*if (dataSize <= msgIn.capacity()) {
           processResponse(proccessedRespType, m);
           return;
         } else {
           proccessedResp = ByteBuffer.allocate((int) dataSize - RdmaMessage.HEADER_LENGTH);
           double numEmptyMsgs = Math.ceil(((double)proccessedResp.limit() - msgIn.remaining()) / Constants.MSGPOOL_BUF_SIZE);
           ctx.addTask(null, cs, (int)numEmptyMsgs);
-        }
+        }*/
       }
       proccessedResp.put(msgIn);
       if (proccessedResp.hasRemaining()) {

@@ -1,6 +1,7 @@
 package org.apache.spark.network.rdma;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -18,15 +19,16 @@ import org.slf4j.LoggerFactory;
 public class RdmaTransportClientFactory implements TransportClientFactory {
 
   private final Logger logger = LoggerFactory.getLogger(RdmaTransportClientFactory.class);
-  private ConcurrentHashMap<String, ClientPool> connectionPool =
-      new ConcurrentHashMap<String, ClientPool>();
+  private ConcurrentHashMap<InetSocketAddress, ClientPool> connectionPool =
+      new ConcurrentHashMap<InetSocketAddress, ClientPool>();
   private int numClientsCreated;
   private int numClientsReused;
   private Random rand = new Random();
   private LinkedList<RdmaClientContext> contexts = new LinkedList<RdmaClientContext>();
+  private int ctxIndex = 0;
   //private TimerStats stats;
 
-  private static class ClientPool {
+  private class ClientPool {
     List<RdmaTransportClient> clients;
     Object lock;
 
@@ -37,7 +39,7 @@ public class RdmaTransportClientFactory implements TransportClientFactory {
   }
   
   public RdmaTransportClientFactory(TransportConf conf) {
-    createContexts(conf.clientThreads());
+    createContexts(Math.max(conf.clientThreads(), 1));
    // stats = new TimerStats(2000, 0);
   }
 
@@ -65,12 +67,13 @@ public class RdmaTransportClientFactory implements TransportClientFactory {
 
   @Override
   public TransportClient createClient(String remoteHost, int remotePort) throws IOException {
+    final InetSocketAddress address = new InetSocketAddress(remoteHost, remotePort);
     long timeBefore = System.nanoTime();
     long timeAfter;
-    ClientPool clientPool = connectionPool.get(remoteHost);
+    ClientPool clientPool = connectionPool.get(address);
     if (clientPool == null) {
-      connectionPool.putIfAbsent(remoteHost, new ClientPool());
-      clientPool = connectionPool.get(remoteHost);
+      connectionPool.putIfAbsent(address, new ClientPool());
+      clientPool = connectionPool.get(address);
     }
 
     synchronized (clientPool.lock) {
@@ -115,7 +118,11 @@ public class RdmaTransportClientFactory implements TransportClientFactory {
   }
 
   private RdmaClientContext getContext() {
-    return contexts.get(rand.nextInt(contexts.size()));
+    RdmaClientContext ctx = contexts.get(ctxIndex);
+    ctxIndex ++;
+    ctxIndex = ctxIndex % contexts.size();
+    logger.debug("New ctx :"+ctxIndex);
+    return ctx;
   }
 
 }

@@ -37,28 +37,34 @@ public class RdmaMessage {
     }
   }
 
-  public List<Msg> encode(MessageProvider provider) {
+  public List<Msg> encode(MessageProvider provider, Msg prevMsg) {
+    Msg prevMsgToUse = prevMsg;
+    Msg m;
     List<Msg> encodedData = new LinkedList<Msg>();
     Message.Type msgType = msg.type();
     //logger.debug(this+" encode going to msgType=" + msgType + " msg=" + msg + " msgSize=" + msgSize);
     while (encodedSize < msgSize) {
-      Msg m = provider.getMsg();
-      if (m == null) {
-        // can't encode anymore data, send partial
-        break;
+      if (prevMsgToUse != null) {
+        m = prevMsgToUse;
+        prevMsgToUse = null;
       } else {
-        ByteBuffer buf = m.getOut();
-        if (encodedSize == 0) {
-          // first time in, need to write header and type
-          buf.putLong(msgSize);
-          msgType.encode(buf);
-          encodedSize += HEADER_LENGTH; // long + byte
-          encodePartial(msgType, true, buf);
-        } else {
-          encodePartial(msgType, false, buf);
+        m = provider.getMsg();
+        if (m == null) {
+          // can't encode anymore data, send partial
+          break;
         }
-        encodedData.add(m);
       }
+      ByteBuffer buf = m.getOut();
+      if (encodedSize == 0) {
+        // first time in, need to write header and type
+        buf.putLong(msgSize);
+        msgType.encode(buf);
+        encodedSize += HEADER_LENGTH; // long + byte
+        encodePartial(msgType, true, buf);
+      } else {
+        encodePartial(msgType, false, buf);
+      }
+      encodedData.add(m);
     }
     if (msgSize == encodedSize) {
       encodedFully = true;
