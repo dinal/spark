@@ -39,7 +39,7 @@ public class RdmaTransportServer implements Runnable, TransportServer, WorkerPro
       mEqh = new EventQueueHandler(null);
       mListener = new ServerPortal(mEqh, uri, new PortalServerCallbacks(), this);
       for (int i = 1; i <= NUM_WORKERS; i++) {
-        serverWorkers.add(new RdmaServerWorker(mListener.getUriForServer()));
+        serverWorkers.add(new RdmaServerWorker(mListener.getUriForServer(), context.getConf().rdmaServerBufCount()));
       }
       this.context = context;
       mListenerThread = new Thread(this);

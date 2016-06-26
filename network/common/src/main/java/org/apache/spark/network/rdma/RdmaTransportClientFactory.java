@@ -26,21 +26,21 @@ public class RdmaTransportClientFactory implements TransportClientFactory {
   private Random rand = new Random();
   private LinkedList<RdmaClientContext> contexts = new LinkedList<RdmaClientContext>();
   private int ctxIndex = 0;
-  //private TimerStats stats;
 
   private class ClientPool {
     List<RdmaTransportClient> clients;
     Object lock;
+    RdmaClientContext ctx;
 
     public ClientPool() {
       clients = new LinkedList<RdmaTransportClient>();
       lock = new Object();
+     // ctx = getContext();
     }
   }
   
   public RdmaTransportClientFactory(TransportConf conf) {
-    createContexts(Math.max(conf.clientThreads(), 1));
-   // stats = new TimerStats(2000, 0);
+    createContexts(Math.max(conf.clientThreads(), 1), conf.rdmaClientBufCount());
   }
 
   @Override
@@ -57,7 +57,6 @@ public class RdmaTransportClientFactory implements TransportClientFactory {
         }
       }
     }
-   // stats.printRecords();
     connectionPool.clear();
   }
 
@@ -69,7 +68,6 @@ public class RdmaTransportClientFactory implements TransportClientFactory {
   public TransportClient createClient(String remoteHost, int remotePort) throws IOException {
     final InetSocketAddress address = new InetSocketAddress(remoteHost, remotePort);
     long timeBefore = System.nanoTime();
-    long timeAfter;
     ClientPool clientPool = connectionPool.get(address);
     if (clientPool == null) {
       connectionPool.putIfAbsent(address, new ClientPool());
@@ -81,39 +79,30 @@ public class RdmaTransportClientFactory implements TransportClientFactory {
         if (client.isActive() && !client.isWorking()) {
           client.reset();
           numClientsReused++;
-          timeAfter = System.nanoTime();
-          logger.debug("Reuse Client:"+ (timeAfter- timeBefore));
-         // stats.addRecord("Reuse Client", (timeAfter- timeBefore));
+         // TimerStats.addRecord("Client factory - reuse", System.nanoTime()- timeBefore);
           return client;
         }
       }
-    //}
       RdmaTransportClient newClient = null;
       while (newClient == null) {
-        newClient = new RdmaTransportClient(remoteHost, remotePort, getContext());
+        newClient = new RdmaTransportClient(remoteHost, remotePort, getContext());//clientPool.ctx);
         if (newClient.isActive()) {
           numClientsCreated++;
-         // synchronized (clientPool.lock) {
-            clientPool.clients.add(newClient);
-         // }
-          //connectionPool.put(remoteHost, clientPool);
+          clientPool.clients.add(newClient);
         } else {
           logger.warn("Client not active "+newClient);
           newClient = null;
         }
       }
-      
-      timeAfter = System.nanoTime();
-      logger.debug("New Client:"+ (timeAfter- timeBefore));
-      //stats.addRecord("New Client", (timeAfter- timeBefore));
+      //TimerStats.addRecord("Client factory - new", System.nanoTime()- timeBefore);
       return newClient;
     }
   }
   
 
-  private void createContexts(int numThreads) {
+  private void createContexts(int numThreads, int bufCount) {
     for (int i=0; i< numThreads; i++) {
-      contexts.add(new RdmaClientContext());
+      contexts.add(new RdmaClientContext(bufCount));
     }
   }
 

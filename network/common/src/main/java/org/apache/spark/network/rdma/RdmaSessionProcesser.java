@@ -30,15 +30,14 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
   private ByteBuffer proccessedReq;
   private Message.Type proccessedReqType;
  // private HashMap<Msg,Long> executeTime = new HashMap<Msg,Long>();
- // private TimerStats stats;
   private RdmaServerWorker executor;
+  private long enterTime;
 
   public RdmaSessionProcesser(RdmaServerWorker worker, String address, RpcHandler handler) {
     super(address, null, handler, handler.getStreamManager());
     callbacks = new SessionServerCallbacks();
     backlog = new LinkedList<RdmaMessage>();
     executor = worker;
-   // stats = new TimerStats(1000,0);
   }
 
   public final class SessionServerCallbacks implements ServerSession.Callbacks {
@@ -52,6 +51,8 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
     @Override
     public void onRequest(final Msg m) {
      // executeTime.put(m, System.nanoTime());
+      //enterTime = System.nanoTime();
+     // TimerStats.addRecord("Server recieve", m.getIn().limit());
       currentMsg = m;         
       processMsg(m);
     }
@@ -134,7 +135,9 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
   @Override
   public void respond(Encodable result) {   
     logger.debug(this.session + " adding to backlog "+(Message) result);
-    backlog.add(new RdmaMessage((Message) result));
+    RdmaMessage rdmaMsg = new RdmaMessage((Message) result);
+    //TimerStats.addRecord("Server block size", rdmaMsg.msgSize);
+    backlog.add(rdmaMsg);
     encodeAndSend();
   }
 
@@ -147,18 +150,16 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
         // immediately, and not accumulating them
         assert msgsToSend.size() == 1;
         if (rdmaMsg.encodedFully) {
-         // logger.info("finished encoding, entry="+rdmaMsg);
           backlog.poll();
         }
         Msg m = msgsToSend.get(0);
         logger.debug(RdmaSessionProcesser.this +" sending response entry="+rdmaMsg+" msg="+m);
+        //TimerStats.addRecord("Server process time", System.nanoTime() - enterTime);
         session.sendResponse(m);
-       // stats.addRecord("Execution", System.nanoTime() - executeTime.remove(m));
-        
       } else {
         logger.debug(RdmaSessionProcesser.this +" sending empty entry="+rdmaMsg);
+        //TimerStats.addRecord("Server process time", System.nanoTime() - enterTime);
         session.sendResponse(currentMsg);
-       // stats.addRecord("Execution", System.nanoTime() - executeTime.remove(currentMsg));
       }
     } catch (Exception e) {
       logger.error("Error while encoding and sending msg " +e.getStackTrace().toString());

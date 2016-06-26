@@ -16,7 +16,6 @@ import org.slf4j.LoggerFactory;
 public class RdmaClientContext implements Runnable, MessageProvider {
   private static boolean CLOSE = false;
   private final Logger logger = LoggerFactory.getLogger(RdmaClientContext.class);
-  private static int CLIENT_BUF_COUNT = 100;
   private final int SEND_TH = 20;
   private final EventQueueHandler eqh;
   private final MsgPool msgPool;
@@ -26,10 +25,10 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   private int msgsSent;
   public volatile int inFlight = 0;
  
-  public RdmaClientContext() {
+  public RdmaClientContext(int bufCount) {
     logger.info("starting Context");
     eqh = new EventQueueHandler(null);
-    msgPool = new MsgPool(CLIENT_BUF_COUNT, Constants.MSGPOOL_BUF_SIZE, Constants.MSGPOOL_BUF_SIZE);
+    msgPool = new MsgPool(bufCount, Constants.MSGPOOL_BUF_SIZE, Constants.MSGPOOL_BUF_SIZE);
     contextThread = new Thread(this);
     contextThread.start();
   }
@@ -79,7 +78,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
           /*if (entry.count != 0) {
             tasks.add(entry);  
             }*/
-         //send regular req 
+         //send regular req
         } else {
           List<Msg> msgsToSend = entry.req.encode(this, prevMsgToUse);
           if (msgsToSend.isEmpty()) {
@@ -116,6 +115,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   // msg can be null
   public Msg getMsg() {
     if (msgPool.isEmpty()) {
+      //TimerStats.addRecord("Client empty msgpool", 1);
       return null;
     }
     Msg msg = msgPool.getMsg();

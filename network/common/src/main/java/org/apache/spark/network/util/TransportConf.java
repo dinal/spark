@@ -172,5 +172,13 @@ public class TransportConf {
   public String networkType() {
     return conf.get("spark.shuffle.network.type", "netty");
   }
+  
+  public int rdmaClientBufCount() {
+    return conf.getInt("spark.shuffle.network.rdma.client.buf.count", 500);
+  }
+  
+  public int rdmaServerBufCount() {
+    return conf.getInt("spark.shuffle.network.rdma.server.buf.count", 2000);
+  }
 
 }

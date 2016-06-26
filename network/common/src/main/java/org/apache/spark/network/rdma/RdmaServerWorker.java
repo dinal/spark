@@ -21,7 +21,6 @@ public class RdmaServerWorker extends Thread implements Worker {
   
   private final Logger logger = LoggerFactory.getLogger(RdmaServerWorker.class);
   public static final int SERVER_BUFFER_SIZE = Constants.MSGPOOL_BUF_SIZE;
-  private static final int SERVER_INITIAL_BUFFER = 1000;
   private static final int SERVER_INC_BUFFER = 500;
  // private static final int MAX_SESSIONS = 2;
   
@@ -34,8 +33,8 @@ public class RdmaServerWorker extends Thread implements Worker {
   private int numHandledSessions = 0;
   
   
-  public RdmaServerWorker(URI uri) {
-    MsgPool pool = new MsgPool(SERVER_INITIAL_BUFFER, SERVER_BUFFER_SIZE, SERVER_BUFFER_SIZE);
+  public RdmaServerWorker(URI uri, int bufCount) {
+    MsgPool pool = new MsgPool(bufCount, SERVER_BUFFER_SIZE, SERVER_BUFFER_SIZE);
     mMsgPools.add(pool);
     mEqh = new EventQueueHandler(new EqhCallbacks(SERVER_INC_BUFFER, SERVER_BUFFER_SIZE, SERVER_BUFFER_SIZE));
     mEqh.bindMsgPool(pool);
@@ -114,6 +113,7 @@ public class RdmaServerWorker extends Thread implements Worker {
     public void onSessionEvent(EventName event, EventReason reason) {
       logger.debug(RdmaServerWorker.this.toString() + " GOT EVENT " + event.toString() + "because of "
               + reason.toString());
+     // TimerStats.addRecord("Server new connection", 1);
     }
 
     public void onSessionNew(SessionKey sesKey, String srcIP, Worker workerHint) {}

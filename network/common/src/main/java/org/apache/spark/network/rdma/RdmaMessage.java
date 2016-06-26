@@ -25,7 +25,7 @@ public class RdmaMessage {
   public final Message msg;
   public boolean encodedFully = false;
   public boolean decodedFully = false;
-  private final int msgSize;
+  public final int msgSize;
   private int encodedSize = 0;
 
   public RdmaMessage(Message msg) {
