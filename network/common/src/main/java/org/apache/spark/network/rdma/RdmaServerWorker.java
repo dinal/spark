@@ -29,7 +29,6 @@ public class RdmaServerWorker extends Thread implements Worker {
   private ArrayList<MsgPool> mMsgPools = new ArrayList<MsgPool>();;;
   private boolean stop = false;
   private ConcurrentLinkedQueue<ServerSession> sessions = new ConcurrentLinkedQueue<ServerSession>();
- // private TimerStats stats;
   private int numHandledSessions = 0;
   
   
@@ -39,7 +38,6 @@ public class RdmaServerWorker extends Thread implements Worker {
     mEqh = new EventQueueHandler(new EqhCallbacks(SERVER_INC_BUFFER, SERVER_BUFFER_SIZE, SERVER_BUFFER_SIZE));
     mEqh.bindMsgPool(pool);
     sp = new ServerPortal(mEqh, uri, new PortalServerCallbacks());
-   // stats = new TimerStats(100, 0);
   }
   
   public void run() {
@@ -113,7 +111,7 @@ public class RdmaServerWorker extends Thread implements Worker {
     public void onSessionEvent(EventName event, EventReason reason) {
       logger.debug(RdmaServerWorker.this.toString() + " GOT EVENT " + event.toString() + "because of "
               + reason.toString());
-     // TimerStats.addRecord("Server new connection", 1);
+      //TimerStats.addRecord("Server new connection", 1);
     }
 
     public void onSessionNew(SessionKey sesKey, String srcIP, Worker workerHint) {}

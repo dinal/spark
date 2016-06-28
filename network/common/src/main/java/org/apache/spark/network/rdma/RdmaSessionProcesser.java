@@ -29,7 +29,6 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
   private LinkedList<RdmaMessage> backlog;
   private ByteBuffer proccessedReq;
   private Message.Type proccessedReqType;
- // private HashMap<Msg,Long> executeTime = new HashMap<Msg,Long>();
   private RdmaServerWorker executor;
   private long enterTime;
 
@@ -50,8 +49,7 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
 
     @Override
     public void onRequest(final Msg m) {
-     // executeTime.put(m, System.nanoTime());
-      //enterTime = System.nanoTime();
+     // enterTime = System.nanoTime();
      // TimerStats.addRecord("Server recieve", m.getIn().limit());
       currentMsg = m;         
       processMsg(m);

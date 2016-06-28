@@ -2,11 +2,13 @@ package org.apache.spark.network.rdma;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.Charset;
 import java.util.LinkedList;
 import java.util.List;
 
 import org.accelio.jxio.Msg;
+import org.apache.spark.network.buffer.FileSegmentManagedBuffer;
 import org.apache.spark.network.protocol.ChunkFetchFailure;
 import org.apache.spark.network.protocol.ChunkFetchRequest;
 import org.apache.spark.network.protocol.ChunkFetchSuccess;
@@ -25,13 +27,24 @@ public class RdmaMessage {
   public final Message msg;
   public boolean encodedFully = false;
   public boolean decodedFully = false;
-  public final int msgSize;
+  public int msgSize;
   private int encodedSize = 0;
+  private ByteBuffer buffData = null;
+  private FileChannel channel = null;
 
   public RdmaMessage(Message msg) {
     this.msg = msg;
     if (msg.isBodyInFrame()) {
       msgSize = HEADER_LENGTH + msg.encodedLength() + (int)msg.body().size();
+      try {
+        if (FileSegmentManagedBuffer.class.isInstance(msg.body())) {
+          channel = ((FileSegmentManagedBuffer)msg.body()).getChannel();
+        } else {
+          buffData = msg.body().nioByteBuffer();
+        }
+      } catch (IOException e) {
+        logger.error("error getting buffer data "+e);
+      }
     } else {
       msgSize = HEADER_LENGTH + msg.encodedLength();
     }
@@ -128,12 +141,27 @@ public class RdmaMessage {
       msg.encode(dst);
       encodedSize += msg.encodedLength();
     }
-    copyPartialBuffer(msg.body().nioByteBuffer(), dst);
+    
+    if (channel != null) {
+      copyFromChannel(channel, dst);
+    } else {
+      copyPartialBuffer(buffData, dst);
+    }
+  }
+
+  private void copyFromChannel(FileChannel channel, ByteBuffer dst) throws IOException {
+    int sizeToWrite = Math.min(dst.remaining(), msgSize - encodedSize);
+    dst.limit(dst.position() + sizeToWrite);
+    int numBytesRead = channel.read(dst);
+    if (numBytesRead == -1) {
+      throw new IOException("Strem was closed while reading file "+channel);
+    }
+    encodedSize += numBytesRead;
   }
 
   private void copyPartialBuffer(ByteBuffer src, ByteBuffer dst) {
     int sizeToWrite = Math.min(dst.remaining(), msgSize - encodedSize);
-    src.position(src.capacity() - (msgSize - encodedSize));
+  //  src.position(src.capacity() - (msgSize - encodedSize));
     src.limit(src.position() + sizeToWrite);
     dst.put(src);
     encodedSize += sizeToWrite;

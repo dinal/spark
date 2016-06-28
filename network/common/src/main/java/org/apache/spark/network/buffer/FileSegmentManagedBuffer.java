@@ -54,6 +54,12 @@ public final class FileSegmentManagedBuffer extends ManagedBuffer {
     return length;
   }
 
+  public FileChannel getChannel() throws IOException{
+      FileChannel channel = new RandomAccessFile(file, "r").getChannel();
+      channel.position(offset);
+      return channel;
+  }
+
   @Override
   public ByteBuffer nioByteBuffer() throws IOException {
     FileChannel channel = null;
