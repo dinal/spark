@@ -40,7 +40,7 @@ public class RdmaTransportClientFactory implements TransportClientFactory {
   }
   
   public RdmaTransportClientFactory(TransportConf conf) {
-    createContexts(Math.max(conf.clientThreads(), 1), conf.rdmaClientBufCount());
+    createContexts(Math.max(conf.clientThreads(), 1), conf);
   }
 
   @Override
@@ -100,9 +100,9 @@ public class RdmaTransportClientFactory implements TransportClientFactory {
   }
   
 
-  private void createContexts(int numThreads, int bufCount) {
+  private void createContexts(int numThreads, TransportConf conf) {
     for (int i=0; i< numThreads; i++) {
-      contexts.add(new RdmaClientContext(bufCount));
+      contexts.add(new RdmaClientContext(conf));
     }
   }
 

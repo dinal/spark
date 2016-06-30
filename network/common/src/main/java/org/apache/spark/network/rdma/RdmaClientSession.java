@@ -109,7 +109,7 @@ public class RdmaClientSession {
         proccessedResp = ByteBuffer.allocate((int) dataSize - RdmaMessage.HEADER_LENGTH);
         
         if (dataSize > msgIn.capacity()) {
-          double numEmptyMsgs = Math.ceil(((double)proccessedResp.limit() - msgIn.remaining()) / Constants.MSGPOOL_BUF_SIZE);
+          double numEmptyMsgs = Math.ceil(((double)proccessedResp.limit() - msgIn.remaining()) / ctx.conf.rdmaServerBufSize());
           ctx.addTask(null, cs, (int)numEmptyMsgs);
         }
         /*if (dataSize <= msgIn.capacity()) {

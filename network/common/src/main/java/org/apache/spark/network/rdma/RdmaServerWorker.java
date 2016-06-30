@@ -13,6 +13,7 @@ import org.accelio.jxio.ServerSession;
 import org.accelio.jxio.ServerSession.SessionKey;
 import org.accelio.jxio.WorkerCache.Worker;
 import org.accelio.jxio.jxioConnection.Constants;
+import org.apache.spark.network.util.TransportConf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,7 +21,6 @@ import org.slf4j.LoggerFactory;
 public class RdmaServerWorker extends Thread implements Worker {
   
   private final Logger logger = LoggerFactory.getLogger(RdmaServerWorker.class);
-  public static final int SERVER_BUFFER_SIZE = Constants.MSGPOOL_BUF_SIZE;
   private static final int SERVER_INC_BUFFER = 500;
  // private static final int MAX_SESSIONS = 2;
   
@@ -30,12 +30,14 @@ public class RdmaServerWorker extends Thread implements Worker {
   private boolean stop = false;
   private ConcurrentLinkedQueue<ServerSession> sessions = new ConcurrentLinkedQueue<ServerSession>();
   private int numHandledSessions = 0;
+  private final TransportConf conf;
   
   
-  public RdmaServerWorker(URI uri, int bufCount) {
-    MsgPool pool = new MsgPool(bufCount, SERVER_BUFFER_SIZE, SERVER_BUFFER_SIZE);
+  public RdmaServerWorker(URI uri, TransportConf conf) {
+    this.conf = conf;
+    MsgPool pool = new MsgPool(conf.rdmaServerBufCount(), conf.rdmaClientBufSize(), conf.rdmaServerBufSize());
     mMsgPools.add(pool);
-    mEqh = new EventQueueHandler(new EqhCallbacks(SERVER_INC_BUFFER, SERVER_BUFFER_SIZE, SERVER_BUFFER_SIZE));
+    mEqh = new EventQueueHandler(new EqhCallbacks(SERVER_INC_BUFFER, conf.rdmaClientBufSize(), conf.rdmaServerBufSize()));
     mEqh.bindMsgPool(pool);
     sp = new ServerPortal(mEqh, uri, new PortalServerCallbacks());
   }

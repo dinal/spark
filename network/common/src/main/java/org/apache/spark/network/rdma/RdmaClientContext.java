@@ -10,6 +10,7 @@ import org.accelio.jxio.EventQueueHandler;
 import org.accelio.jxio.Msg;
 import org.accelio.jxio.MsgPool;
 import org.accelio.jxio.jxioConnection.Constants;
+import org.apache.spark.network.util.TransportConf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,11 +25,13 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   private ConcurrentLinkedQueue<RdmaClientSession> sessions = new ConcurrentLinkedQueue<RdmaClientSession>();
   private int msgsSent;
   public volatile int inFlight = 0;
+  public final TransportConf conf;
  
-  public RdmaClientContext(int bufCount) {
+  public RdmaClientContext(TransportConf conf) {
     logger.info("starting Context");
+    this.conf = conf;
     eqh = new EventQueueHandler(null);
-    msgPool = new MsgPool(bufCount, Constants.MSGPOOL_BUF_SIZE, Constants.MSGPOOL_BUF_SIZE);
+    msgPool = new MsgPool(conf.rdmaClientBufCount(), conf.rdmaServerBufSize(), conf.rdmaClientBufSize());
     contextThread = new Thread(this);
     contextThread.start();
   }
@@ -115,7 +118,7 @@ public class RdmaClientContext implements Runnable, MessageProvider {
   // msg can be null
   public Msg getMsg() {
     if (msgPool.isEmpty()) {
-      //TimerStats.addRecord("Client empty msgpool", 1);
+     // TimerStats.addRecord("Client empty msgpool", 1);
       return null;
     }
     Msg msg = msgPool.getMsg();

@@ -75,9 +75,13 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
       encodeAndSend();
     } else {
       if (proccessedReq == null) {
+        logger.debug(RdmaSessionProcesser.this + " here1 " + m);
         long dataLength = data.getLong();
+        logger.debug(RdmaSessionProcesser.this + " here2 " + m);
         proccessedReqType = Message.Type.decode(data);
+        logger.debug(RdmaSessionProcesser.this + " here3 " + m);
         if (dataLength <= data.capacity()) {
+          logger.debug(RdmaSessionProcesser.this + " here4 " + m+" dataLength="+dataLength);
           // msg fits in 1 buffer, no need to concatenate buffers
           RequestMessage decoded = decode(proccessedReqType, data);
           logger.debug(RdmaSessionProcesser.this + " short decoded, going to handle " + decoded);
@@ -134,7 +138,7 @@ public class RdmaSessionProcesser extends TransportRequestHandler implements Mes
   public void respond(Encodable result) {   
     logger.debug(this.session + " adding to backlog "+(Message) result);
     RdmaMessage rdmaMsg = new RdmaMessage((Message) result);
-    //TimerStats.addRecord("Server block size", rdmaMsg.msgSize);
+   // TimerStats.addRecord("Server block size", rdmaMsg.msgSize);
     backlog.add(rdmaMsg);
     encodeAndSend();
   }

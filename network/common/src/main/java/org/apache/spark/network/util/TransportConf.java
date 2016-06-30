@@ -174,11 +174,19 @@ public class TransportConf {
   }
   
   public int rdmaClientBufCount() {
-    return conf.getInt("spark.shuffle.network.rdma.client.buf.count", 500);
+    return conf.getInt("spark.shuffle.network.rdma.client.buf.count", 200);
   }
   
   public int rdmaServerBufCount() {
-    return conf.getInt("spark.shuffle.network.rdma.server.buf.count", 2000);
+    return conf.getInt("spark.shuffle.network.rdma.server.buf.count", 1000);
+  }
+  
+  public int rdmaClientBufSize() {
+    return conf.getInt("spark.shuffle.network.rdma.client.buf.size", 1000);
+  }
+  
+  public int rdmaServerBufSize() {
+    return conf.getInt("spark.shuffle.network.rdma.server.buf.size", 64 * 1024 * 2);
   }
 
 }
